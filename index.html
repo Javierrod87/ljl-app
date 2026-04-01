@@ -1347,14 +1347,11 @@ async function loadAdminEmployees() {
   el.innerHTML = '<div class="loading">Loading…</div>';
   const { data } = await sb.from('employees').select('*').eq('is_active', true).order('name');
   if (!data || data.length === 0) { el.innerHTML = '<div class="empty-state"><p>No employees yet. Add your first employee.</p></div>'; return; }
-  el.innerHTML = data.map(emp => `<div class="card-row">
-    <div style="width:40px;height:40px;border-radius:50%;background:var(--blue-light);color:var(--blue);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0">${emp.name.charAt(0)}</div>
-    <div style="flex:1">
-      <div style="font-weight:600;font-size:15px">${emp.name}</div>
-      <div style="font-size:12px;color:var(--text-secondary)">${emp.email}</div>
-    </div>
-    <span class="badge badge-${emp.role === 'admin' ? 'role-admin' : ''} role-${emp.role}">${emp.role}</span>
-  </div>`).join('');
+  el.innerHTML = data.map(emp => {
+    const isMe = emp.email === currentEmployee?.email;
+    const deleteBtn = isMe ? '<span style="font-size:11px;color:var(--text-secondary);flex-shrink:0">You</span>' : '<button onclick="deleteEmployee(\''+emp.id+'\',\''+emp.name+'\')" style="background:var(--red-light);color:var(--red);border:1px solid var(--red);border-radius:6px;padding:5px 10px;font-size:12px;font-weight:600;cursor:pointer;flex-shrink:0">Remove</button>';
+    return '<div class="card-row" style="display:flex;align-items:center;gap:12px"><div style="width:40px;height:40px;border-radius:50%;background:var(--blue-light);color:var(--blue);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0">'+emp.name.charAt(0)+'</div><div style="flex:1"><div style="font-weight:600;font-size:15px">'+emp.name+'</div><div style="font-size:12px;color:var(--text-secondary)">'+emp.email+'</div></div><span class="badge role-'+emp.role+'">'+emp.role+'</span>'+deleteBtn+'</div>';
+  }).join('');
 }
 
 function showAddEmployee() {
@@ -1380,6 +1377,14 @@ function showAddEmployee() {
     <button class="btn btn-secondary" style="margin-top:8px" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
   </div>`;
   document.body.appendChild(overlay);
+}
+
+async function deleteEmployee(employeeId, name) {
+  if (!confirm('Remove ' + name + ' from the app? They will no longer be able to log in.')) return;
+  const { error } = await sb.from('employees').update({ is_active: false }).eq('id', employeeId);
+  if (error) { showToast('Error removing employee'); return; }
+  showToast(name + ' has been removed');
+  loadAdminEmployees();
 }
 
 async function createEmployee() {
