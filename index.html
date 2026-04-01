@@ -589,6 +589,41 @@ async function startApp() {
 }
 
 // Check existing session on load
+async function logFreeFormMaintenance(equipId) {
+  const serviceType = document.getElementById('free-maint-type-' + equipId)?.value.trim();
+  const shop = document.getElementById('free-maint-shop-' + equipId)?.value.trim() || '';
+  const hours = parseFloat(document.getElementById('free-maint-hours-' + equipId)?.value || 0);
+  const cost = parseFloat(document.getElementById('free-maint-cost-' + equipId)?.value || 0);
+  const parts = document.getElementById('free-maint-parts-' + equipId)?.value.trim() || '';
+  const notes = document.getElementById('free-maint-notes-' + equipId)?.value.trim() || '';
+
+  if (!serviceType) { showToast('Please enter a service or repair description'); return; }
+
+  const fullNotes = [notes, shop ? 'By: ' + shop : ''].filter(Boolean).join(' | ');
+
+  const { error } = await sb.from('maintenance_events').insert({
+    equipment_id: equipId,
+    maintenance_schedule_id: null,
+    service_type: serviceType,
+    performed_by_id: currentEmployee?.id,
+    hours_at_service: hours || 0,
+    notes: fullNotes || null,
+    parts_used: parts || null,
+    cost: cost || null
+  });
+
+  if (error) { showToast('Error saving: ' + error.message); return; }
+
+  // Clear the form
+  ['free-maint-type-','free-maint-shop-','free-maint-cost-','free-maint-parts-','free-maint-notes-'].forEach(prefix => {
+    const el = document.getElementById(prefix + equipId);
+    if (el) el.value = '';
+  });
+
+  showToast('Repair logged successfully!');
+  openEquipDetail(equipId);
+}
+
 function filterAndGoWO(priority) {
   woFilter = priority;
   showScreen('workorders');
@@ -944,19 +979,38 @@ async function openEquipDetail(id) {
         <div class="field"><label>Hours at service</label><input type="number" id="log-maint-hours-${id}" value="${e.current_hours || 0}"></div>
         <div class="field"><label>Notes</label><input type="text" id="log-maint-notes-${id}" placeholder="Optional notes…"></div>
         <div class="field"><label>Parts used</label><input type="text" id="log-maint-parts-${id}" placeholder="Optional…"></div>
+        <div class="field-row">
+          <div class="field"><label>Total repair cost ($)</label><input type="number" id="log-maint-cost-${id}" placeholder="0.00"></div>
+          <div class="field"><label>Shop / Vendor</label><input type="text" id="log-maint-shop-${id}" placeholder="e.g. ABC Diesel, In-house"></div>
+        </div>
         <button class="btn" onclick="logMaintenance('${id}')">Log Maintenance</button>
       </div>
     </div>` : ''}
     <div class="card" style="margin-bottom:10px">
+      <div class="card-header"><h2>Log Repair / Maintenance</h2></div>
+      <div class="card-body">
+        <p style="font-size:12px;color:var(--text-secondary);margin-bottom:12px">Log any repair or maintenance event — scheduled service, outside shop visit, or one-off repair.</p>
+        <div class="field"><label>Service / Repair description <span class="required">*</span></label><input type="text" id="free-maint-type-${id}" placeholder="e.g. Oil Change, Brake Repair, Engine Rebuild…"></div>
+        <div class="field"><label>Performed by / Shop</label><input type="text" id="free-maint-shop-${id}" placeholder="e.g. ABC Diesel, In-house, John Smith"></div>
+        <div class="field-row">
+          <div class="field"><label>Hours at service</label><input type="number" id="free-maint-hours-${id}" placeholder="${e.current_hours || 0}" value="${e.current_hours || 0}"></div>
+          <div class="field"><label>Total cost ($)</label><input type="number" id="free-maint-cost-${id}" placeholder="0.00"></div>
+        </div>
+        <div class="field"><label>Parts used</label><input type="text" id="free-maint-parts-${id}" placeholder="Optional…"></div>
+        <div class="field"><label>Notes</label><input type="text" id="free-maint-notes-${id}" placeholder="Optional additional notes…"></div>
+        <button class="btn" onclick="logFreeFormMaintenance('${id}')">Save to Maintenance History</button>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:10px">
       <div class="card-header"><h2>Work Order History</h2></div>
       <div class="card-body">
-        ${wos && wos.length > 0 ? wos.map(w => `<div class="tl-item"><div class="tl-dot green">✓</div><div class="tl-body"><div class="tl-title">${w.work_order_number} · ${w.category}</div><div class="tl-sub">${w.description.substring(0,60)}${w.description.length > 60 ? '…' : ''}</div><div class="tl-sub">Completed ${formatDate(w.completed_at)} · ${w.assigned_to?.name || '—'} · ${w.labor_hours ? w.labor_hours + ' hrs' : ''}</div></div></div>`).join('') : '<p style="color:var(--text-secondary);font-size:13px">No completed work orders yet.</p>'}
+        ${wos && wos.length > 0 ? wos.map(w => { const total = (parseFloat(w.labor_hours||0) * 0 + parseFloat(w.parts_cost||0)); const hasTotal = w.parts_cost || w.labor_hours; return `<div class="tl-item"><div class="tl-dot green">✓</div><div class="tl-body"><div class="tl-title">${w.work_order_number} · ${w.category}${w.parts_cost ? ' <span style="color:var(--green);font-weight:600">Parts: $' + parseFloat(w.parts_cost).toFixed(2) + '</span>' : ''}</div><div class="tl-sub">${w.description.substring(0,60)}${w.description.length > 60 ? '…' : ''}</div><div class="tl-sub">Completed ${formatDate(w.completed_at)} · ${w.assigned_to?.name || '—'}${w.labor_hours ? ' · ' + w.labor_hours + ' labor hrs' : ''}${w.resolution_notes ? ' · ' + w.resolution_notes.substring(0,40) : ''}</div></div></div>`; }).join('') : '<p style="color:var(--text-secondary);font-size:13px">No completed work orders yet.</p>'}
       </div>
     </div>
     <div class="card" style="margin-bottom:10px">
       <div class="card-header"><h2>Maintenance History</h2></div>
       <div class="card-body">
-        ${maintEvents && maintEvents.length > 0 ? maintEvents.map(m => `<div class="tl-item"><div class="tl-dot blue">🔧</div><div class="tl-body"><div class="tl-title">${m.service_type}</div><div class="tl-sub">${formatDate(m.performed_at)} · ${m.performed_by?.name || '—'} · ${m.hours_at_service} hrs${m.notes ? ' · ' + m.notes : ''}</div></div></div>`).join('') : '<p style="color:var(--text-secondary);font-size:13px">No maintenance events logged yet.</p>'}
+        ${maintEvents && maintEvents.length > 0 ? maintEvents.map(m => `<div class="tl-item"><div class="tl-dot blue">🔧</div><div class="tl-body"><div class="tl-title">${m.service_type} ${m.cost ? '<span style="background:#eafaf1;color:#27ae60;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">$' + parseFloat(m.cost).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + '</span>' : ''}</div><div class="tl-sub">${formatDate(m.performed_at)} · ${m.hours_at_service} hrs · ${m.performed_by?.name || 'In-house'}${m.notes ? ' · ' + m.notes : ''}${m.parts_used ? ' · ' + m.parts_used : ''}</div></div></div>`).join('') : '<p style="color:var(--text-secondary);font-size:13px">No maintenance events logged yet.</p>'}
       </div>
     </div>
   `;
@@ -992,10 +1046,13 @@ async function logMaintenance(equipId) {
   const hours = parseFloat(document.getElementById('log-maint-hours-' + equipId)?.value || 0);
   const notes = document.getElementById('log-maint-notes-' + equipId)?.value || '';
   const parts = document.getElementById('log-maint-parts-' + equipId)?.value || '';
+  const totalCost = parseFloat(document.getElementById('log-maint-cost-' + equipId)?.value || 0);
+  const shop = document.getElementById('log-maint-shop-' + equipId)?.value.trim() || '';
+  const fullNotes = [notes, shop ? 'Shop: ' + shop : ''].filter(Boolean).join(' | ');
   if (!hours) { showToast('Please enter hours at service'); return; }
   const { data: schedule } = await sb.from('maintenance_schedules').select('*').eq('id', scheduleId).single();
   if (!schedule) { showToast('Schedule not found'); return; }
-  await sb.from('maintenance_events').insert({ equipment_id: equipId, maintenance_schedule_id: scheduleId, service_type: schedule.service_type, performed_by_id: currentEmployee?.id, hours_at_service: hours, notes, parts_used: parts });
+  await sb.from('maintenance_events').insert({ equipment_id: equipId, maintenance_schedule_id: scheduleId, service_type: schedule.service_type, performed_by_id: currentEmployee?.id, hours_at_service: hours, notes: fullNotes, parts_used: parts, cost: totalCost || null });
   const nextDue = hours + parseFloat(schedule.interval_hours);
   await sb.from('maintenance_schedules').update({ last_service_hours: hours, next_due_hours: nextDue, updated_at: new Date().toISOString() }).eq('id', scheduleId);
   showToast('Maintenance logged! Next due: ' + nextDue + ' hrs');
