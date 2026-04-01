@@ -442,6 +442,12 @@
           <button onclick="showAddEmployee()">+ Add</button>
         </div>
         <div class="card" id="admin-emp-list"><div class="loading">Loading…</div></div>
+        <div class="form-section" style="margin-top:12px">
+          <h3>Email Alerts</h3>
+          <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Send a maintenance alert email to all managers and mechanics. The app sends this automatically once per day when alerts exist.</p>
+          <button class="btn" id="test-email-btn" onclick="sendTestAlertEmail()">Send Alert Email Now</button>
+          <div id="test-email-result" style="margin-top:10px;font-size:13px;display:none"></div>
+        </div>
       </div>
 
       <!-- Add Equipment tab -->
@@ -600,6 +606,39 @@ async function startApp() {
 }
 
 // Check existing session on load
+async function sendTestAlertEmail() {
+  const btn = document.getElementById('test-email-btn');
+  const result = document.getElementById('test-email-result');
+  btn.textContent = 'Sending…';
+  btn.disabled = true;
+  result.style.display = 'none';
+  try {
+    const res = await fetch('https://fahkluyuvgxhmpdkvrcr.supabase.co/functions/v1/dynamic-responder', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZhaGtsdXl1dmd4aG1wZGt2cmNyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwNTUwMjAsImV4cCI6MjA5MDYzMTAyMH0.5ALFe-1xuwKUvlKDykngVQK1vbLRCKbsnU3KiAus46o'
+      },
+      body: JSON.stringify({})
+    });
+    const data = await res.json();
+    result.style.display = 'block';
+    if (data.message === 'No alerts to send') {
+      result.style.color = 'var(--gray)';
+      result.textContent = 'No active alerts found — no email sent. Add equipment with maintenance schedules to trigger alerts.';
+    } else {
+      result.style.color = 'var(--green)';
+      result.textContent = data.message;
+    }
+  } catch(e) {
+    result.style.display = 'block';
+    result.style.color = 'var(--red)';
+    result.textContent = 'Error sending email. Check your connection and try again.';
+  }
+  btn.textContent = 'Send Alert Email Now';
+  btn.disabled = false;
+}
+
 async function logFreeFormMaintenance(equipId) {
   const serviceType = document.getElementById('free-maint-type-' + equipId)?.value.trim();
   const shop = document.getElementById('free-maint-shop-' + equipId)?.value.trim() || '';
@@ -652,6 +691,28 @@ function filterEquipment() {
     filtered = filtered.filter(e => (e.unit_number + ' ' + e.make + ' ' + e.model + ' ' + e.location).toLowerCase().includes(q));
   }
   renderEquipList(filtered);
+}
+
+async function triggerMaintenanceAlertEmails() {
+  // Only send once per day — check last sent time in localStorage
+  const lastSent = localStorage.getItem('lastAlertEmailSent');
+  const now = Date.now();
+  const ONE_DAY = 24 * 60 * 60 * 1000;
+  if (lastSent && (now - parseInt(lastSent)) < ONE_DAY) return;
+
+  try {
+    await fetch('https://fahkluyuvgxhmpdkvrcr.supabase.co/functions/v1/dynamic-responder', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZhaGtsdXl1dmd4aG1wZGt2cmNyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwNTUwMjAsImV4cCI6MjA5MDYzMTAyMH0.5ALFe-1xuwKUvlKDykngVQK1vbLRCKbsnU3KiAus46o'
+      },
+      body: JSON.stringify({})
+    });
+    localStorage.setItem('lastAlertEmailSent', now.toString());
+  } catch(e) {
+    console.log('Alert email error:', e);
+  }
 }
 
 function filterAndGoWO(priority) {
@@ -717,6 +778,11 @@ async function loadDashboard() {
   });
   document.getElementById('m-overdue').textContent = overdue;
   document.getElementById('m-soon').textContent = soon;
+
+  // Trigger email alerts if any overdue or due soon
+  if (overdue > 0 || soon > 0) {
+    triggerMaintenanceAlertEmails();
+  }
 
   const woBadge = document.getElementById('wo-badge');
   if (open > 0) { woBadge.textContent = open; woBadge.style.display = 'block'; } else { woBadge.style.display = 'none'; }
