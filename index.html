@@ -406,6 +406,15 @@
           <input type="date" id="wo-due-date">
         </div>
       </div>
+      <div class="form-section">
+        <h3>Photos</h3>
+        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Attach photos of the issue. You can take a photo or choose from your library.</p>
+        <input type="file" id="wo-photos" accept="image/*" multiple capture="environment" style="display:none" onchange="previewPhotos(this)">
+        <button class="action-btn" style="background:var(--blue-light);color:var(--blue);width:100%;text-align:center;margin-bottom:10px" onclick="document.getElementById('wo-photos').click()">
+          + Take Photo / Choose from Library
+        </button>
+        <div id="photo-preview" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+      </div>
       <div class="btn-row">
         <button class="btn btn-secondary" onclick="showScreen('workorders')">Cancel</button>
         <button class="btn" onclick="submitWorkOrder()">Create Work Order</button>
@@ -915,6 +924,9 @@ async function openWODetail(id) {
   const { data: w } = await sb.from('work_orders').select('*, equipment(id, unit_number, make, model), submitted_by:employees!work_orders_submitted_by_id_fkey(name), assigned_to:employees!work_orders_assigned_to_id_fkey(name)').eq('id', id).single();
   const { data: hist } = await sb.from('work_order_status_history').select('*, changed_by:employees!work_order_status_history_changed_by_id_fkey(name)').eq('work_order_id', id).order('changed_at', { ascending: false });
   if (!w) { el.innerHTML = '<p>Work order not found.</p>'; return; }
+  
+  // Load attachments
+  const { data: attachments } = await sb.from('work_order_attachments').select('*').eq('work_order_id', id);
   const equip = w.equipment ? `${w.equipment.unit_number} — ${w.equipment.make || ''} ${w.equipment.model || ''}`.trim() : 'Unknown';
   const canEdit = currentEmployee && ['admin','manager','foreman','mechanic'].includes(currentEmployee.role);
   el.innerHTML = `
@@ -934,6 +946,7 @@ async function openWODetail(id) {
         ${w.due_date ? `<div class="info-row"><span class="info-label">Due date</span><span class="info-value">${w.due_date}</span></div>` : ''}
       </div>
     </div>
+    ${attachments && attachments.length > 0 ? `<div class="card" style="margin-bottom:10px"><div class="card-header"><h2>Photos (${attachments.length})</h2></div><div class="card-body" style="display:flex;flex-wrap:wrap;gap:8px">${attachments.map(a => '<a href="'+a.file_url+'" target="_blank"><img src="'+a.file_url+'" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--border)"></a>').join('')}</div></div>` : ''}
     <div class="card" style="margin-bottom:10px">
       <div class="card-header"><h2>Description</h2></div>
       <div class="card-body"><p style="font-size:14px;line-height:1.6;color:var(--text)">${w.description}</p></div>
@@ -1037,8 +1050,62 @@ async function submitWorkOrder() {
   if (error) { showToast('Error creating work order: ' + error.message); return; }
   await sb.from('work_order_status_history').insert({ work_order_id: data.id, to_status: insertData.status, changed_by_id: currentEmployee?.id, note: 'Work order created' });
   if (hours) { await sb.from('hour_readings').insert({ equipment_id: equipId, hours: parseFloat(hours), submitted_by_id: currentEmployee?.id }); await sb.from('equipment').update({ current_hours: parseFloat(hours) }).eq('id', equipId).lt('current_hours', parseFloat(hours)); }
+  await uploadPhotos(data.id);
   showToast('Work order created!');
+  // Send email notification
+  fetch('https://fahkluyuvgxhmpdkvrcr.supabase.co/functions/v1/work-order-notify', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZhaGtsdXl1dmd4aG1wZGt2cmNyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwNTUwMjAsImV4cCI6MjA5MDYzMTAyMH0.5ALFe-1xuwKUvlKDykngVQK1vbLRCKbsnU3KiAus46o'
+    },
+    body: JSON.stringify({ work_order_id: data.id })
+  }).catch(e => console.log('WO notify error:', e));
   showScreen('workorders');
+}
+
+function previewPhotos(input) {
+  const preview = document.getElementById('photo-preview');
+  preview.innerHTML = '';
+  const files = Array.from(input.files);
+  files.forEach((file, i) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const div = document.createElement('div');
+      div.style.cssText = 'position:relative;width:80px;height:80px';
+      div.innerHTML = '<img src="'+e.target.result+'" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">' +
+        '<button onclick="removePhoto('+i+')" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:#b91c1c;color:white;border:none;cursor:pointer;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center">×</button>';
+      preview.appendChild(div);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function removePhoto(index) {
+  const input = document.getElementById('wo-photos');
+  const dt = new DataTransfer();
+  Array.from(input.files).forEach((file, i) => { if (i !== index) dt.items.add(file); });
+  input.files = dt.files;
+  previewPhotos(input);
+}
+
+async function uploadPhotos(workOrderId) {
+  const input = document.getElementById('wo-photos');
+  if (!input.files || input.files.length === 0) return;
+  for (const file of input.files) {
+    const ext = file.name.split('.').pop();
+    const fileName = workOrderId + '/' + Date.now() + '.' + ext;
+    const { data, error } = await sb.storage.from('work-order-photos').upload(fileName, file);
+    if (!error && data) {
+      const { data: urlData } = sb.storage.from('work-order-photos').getPublicUrl(fileName);
+      await sb.from('work_order_attachments').insert({
+        work_order_id: workOrderId,
+        file_url: urlData.publicUrl,
+        file_name: file.name,
+        uploaded_by_id: currentEmployee?.id
+      });
+    }
+  }
 }
 
 function resetCreateWOForm() {
