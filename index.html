@@ -1393,6 +1393,19 @@ async function createEmployee() {
   const password = document.getElementById('emp-password').value;
   const role = document.getElementById('emp-role').value;
   if (!name || !email || !password) { showToast('Please fill in all fields'); return; }
+
+  // Check if employee already exists but is inactive
+  const { data: existing } = await sb.from('employees').select('id, is_active').eq('email', email).single();
+  if (existing) {
+    // Reactivate existing employee
+    await sb.from('employees').update({ is_active: true, name, role }).eq('email', email);
+    document.querySelector('.modal-overlay')?.remove();
+    showToast('Employee account reactivated!');
+    loadAdminEmployees();
+    return;
+  }
+
+  // Create new auth user
   const { data, error } = await sb.auth.signUp({ email, password });
   if (error) { showToast('Error: ' + error.message); return; }
   if (data.user) {
