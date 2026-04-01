@@ -621,7 +621,7 @@ async function handleForgotPassword() {
   });
   if (error) {
     const err = document.getElementById('forgot-error');
-    err.textContent = 'Error sending reset email. Please try again.';
+    err.textContent = 'Error: ' + error.message;
     err.style.display = 'block';
     return;
   }
