@@ -632,20 +632,29 @@ let currentEquipId = null;
 let equipTypeFilter = 'all';
 
 // =====================
-// AUTH — use event listeners instead of inline onclick for better iPad compatibility
+// AUTH
 // =====================
-document.addEventListener('DOMContentLoaded', function() {
+// Attach events multiple ways for maximum iPad compatibility
+function attachAuthEvents() {
   const signinBtn = document.getElementById('signin-btn');
   const forgotBtn = document.getElementById('forgot-btn');
-  if (signinBtn) signinBtn.addEventListener('click', handleLogin);
-  if (forgotBtn) forgotBtn.addEventListener('click', showForgotPassword);
-  
-  // Also handle enter key on password field
+  if (signinBtn) {
+    signinBtn.onclick = handleLogin;
+    signinBtn.addEventListener('click', handleLogin);
+    signinBtn.addEventListener('touchend', function(e) { e.preventDefault(); handleLogin(); });
+  }
+  if (forgotBtn) {
+    forgotBtn.onclick = showForgotPassword;
+    forgotBtn.addEventListener('click', showForgotPassword);
+    forgotBtn.addEventListener('touchend', function(e) { e.preventDefault(); showForgotPassword(); });
+  }
   const pwField = document.getElementById('login-password');
-  if (pwField) pwField.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') handleLogin();
-  });
-});
+  if (pwField) {
+    pwField.addEventListener('keydown', function(e) { if (e.key === 'Enter') handleLogin(); });
+  }
+}
+document.addEventListener('DOMContentLoaded', attachAuthEvents);
+setTimeout(attachAuthEvents, 500);
 function showForgotPassword() {
   document.getElementById('auth-screen').style.display = 'none';
   document.getElementById('forgot-screen').style.display = 'flex';
@@ -1889,11 +1898,4 @@ function adminTab(tab, el) {
   el.classList.add('active');
   document.getElementById('admin-employees').style.display = tab === 'employees' ? 'block' : 'none';
   document.getElementById('admin-equipment').style.display = tab === 'equipment' ? 'block' : 'none';
-  if (tab === 'employees') loadAdminEmployees();
-}
-
-async function loadAdminEmployees() {
-  const el = document.getElementById('admin-emp-list');
-  el.innerHTML = '<div class="loading">Loading…</div>';
-  const { data } = await sb.from('employees').select('*').eq('is_active', true).order('name');
-  if (!data || data.length === 0) { el.inner
+  if (tab === 'employees') loadA
