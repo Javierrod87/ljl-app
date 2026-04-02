@@ -446,6 +446,7 @@
         <span class="filter-chip" onclick="setEquipTypeFilter('Loader',this)">Loaders</span>
         <span class="filter-chip" onclick="setEquipTypeFilter('Vacuum Truck',this)">Vacuum Trucks</span>
         <span class="filter-chip" onclick="setEquipTypeFilter('Water Truck',this)">Water Trucks</span>
+        <span class="filter-chip" onclick="setEquipTypeFilter('Truck',this)">Trucks</span>
       </div>
       <div class="card" id="equip-list"><div class="loading">Loading…</div></div>
     </div>
@@ -1617,6 +1618,4 @@ async function saveNewMaintSchedule(equipId) {
   const threshold = parseFloat(document.getElementById('ms-threshold').value || 20);
   const hrsPerDay = parseFloat(document.getElementById('ms-hrs-day').value || 4);
   const daysPerWeek = parseFloat(document.getElementById('ms-days-week').value || 5);
-  if (!serviceType || !interval) { showToast('Please fill in service type and interval'); return; }
-  const nextDue = lastHours + interval;
-  await sb.from('maintenance_sc
+  if (!serviceType || !interval) { showToast('Please fill in service type and in
