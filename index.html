@@ -504,6 +504,14 @@
         </div>
         <div class="card" id="admin-emp-list"><div class="loading">Loading…</div></div>
         <div class="form-section" style="margin-top:12px">
+          <h3>Change My Password</h3>
+          <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Update your login password.</p>
+          <div class="field"><label>New password</label><input type="password" id="change-pw-new" placeholder="Enter new password"></div>
+          <div class="field"><label>Confirm password</label><input type="password" id="change-pw-confirm" placeholder="Confirm new password"></div>
+          <button class="btn" onclick="changeMyPassword()">Update Password</button>
+          <div id="change-pw-result" style="margin-top:10px;font-size:13px;display:none"></div>
+        </div>
+        <div class="form-section" style="margin-top:12px">
           <h3>Email Alerts</h3>
           <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Send a maintenance alert email to all managers and mechanics. The app sends this automatically once per day when alerts exist.</p>
           <button class="btn" id="test-email-btn" onclick="sendTestAlertEmail()">Send Alert Email Now</button>
@@ -739,6 +747,46 @@ async function startApp() {
 }
 
 // Check existing session on load
+async function changeMyPassword() {
+  const newPw = document.getElementById('change-pw-new').value;
+  const confirmPw = document.getElementById('change-pw-confirm').value;
+  const result = document.getElementById('change-pw-result');
+  result.style.display = 'none';
+
+  if (!newPw || !confirmPw) {
+    result.style.display = 'block';
+    result.style.color = 'var(--red)';
+    result.textContent = 'Please enter and confirm your new password.';
+    return;
+  }
+  if (newPw !== confirmPw) {
+    result.style.display = 'block';
+    result.style.color = 'var(--red)';
+    result.textContent = 'Passwords do not match.';
+    return;
+  }
+  if (newPw.length < 6) {
+    result.style.display = 'block';
+    result.style.color = 'var(--red)';
+    result.textContent = 'Password must be at least 6 characters.';
+    return;
+  }
+
+  const { error } = await sb.auth.updateUser({ password: newPw });
+  if (error) {
+    result.style.display = 'block';
+    result.style.color = 'var(--red)';
+    result.textContent = 'Error: ' + error.message;
+    return;
+  }
+
+  result.style.display = 'block';
+  result.style.color = 'var(--green)';
+  result.textContent = 'Password updated successfully!';
+  document.getElementById('change-pw-new').value = '';
+  document.getElementById('change-pw-confirm').value = '';
+}
+
 async function sendTestAlertEmail() {
   const btn = document.getElementById('test-email-btn');
   const result = document.getElementById('test-email-result');
@@ -1046,45 +1094,4 @@ const translations = {
     'Employees': 'Empleados', 'Add Equipment': 'Agregar Equipo',
     '+ Add': '+ Agregar', 'Remove': 'Eliminar', 'You': 'Tú',
     'EMAIL ALERTS': 'ALERTAS POR EMAIL',
-    'Send a maintenance alert email to all managers and mechanics. The app sends this automatically once per day when alerts exist.': 'Envía un correo de alerta de mantenimiento a todos los gerentes y mecánicos. La app lo envía automáticamente una vez al día cuando hay alertas.',
-    'Send Alert Email Now': 'Enviar Alerta por Email Ahora',
-    // Login
-    'Sign in to your account': 'Inicia sesión en tu cuenta',
-    'Email address': 'Correo electrónico', 'Password': 'Contraseña', 'Sign In': 'Iniciar Sesión',
-    'Forgot password?': '¿Olvidaste tu contraseña?', 'Reset Password': 'Restablecer Contraseña',
-    'Enter your email to receive a reset link': 'Ingresa tu correo para recibir un enlace de restablecimiento',
-    'Send Reset Link': 'Enviar Enlace', 'Back to Sign In': 'Volver al Inicio de Sesión',
-  }
-};
-
-let currentLang = localStorage.getItem('ljl_lang') || 'en';
-
-function t(key) {
-  return translations[currentLang][key] || translations['en'][key] || key;
-}
-
-function toggleLanguage() {
-  // Read from localStorage directly to avoid state issues
-  const current = localStorage.getItem('ljl_lang') || 'en';
-  currentLang = current === 'en' ? 'es' : 'en';
-  localStorage.setItem('ljl_lang', currentLang);
-  document.getElementById('lang-toggle').textContent = currentLang === 'en' ? 'EN' : 'ES';
-  applyTranslations();
-  // Re-render current screen to apply translations to dynamic content
-  const screens = ['dashboard','workorders','equipment','alerts','admin'];
-  for (const s of screens) {
-    if (document.getElementById('screen-' + s)?.classList.contains('active')) {
-      if (s === 'dashboard') loadDashboard();
-      else if (s === 'workorders') loadWorkOrders();
-      else if (s === 'equipment') loadEquipment();
-      else if (s === 'alerts') loadAlerts();
-      else if (s === 'admin') loadAdminEmployees();
-      break;
-    }
-  }
-}
-
-function applyTranslations() {
-  document.querySelectorAll('[data-t]').forEach(el => {
-    const key = el.getAttribute('data-t');
-    if (el.ta
+    'Send a maintenan
