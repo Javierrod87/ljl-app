@@ -263,18 +263,16 @@
       <p data-t="Sign in to your account">Sign in to your account</p>
     </div>
     <div class="auth-error" id="auth-error"></div>
-    <form id="login-form" onsubmit="handleLoginForm(event)" action="javascript:void(0)" style="width:100%">
-      <div class="form-group">
-        <label data-t="Email address">Email address</label>
-        <input type="email" id="login-email" name="email" placeholder="you@company.com" autocomplete="email" required>
-      </div>
-      <div class="form-group">
-        <label data-t="Password">Password</label>
-        <input type="password" id="login-password" name="password" placeholder="••••••••" autocomplete="current-password" required>
-      </div>
-      <button type="submit" class="btn" data-t="Sign In">Sign In</button>
-    </form>
-    <button type="button" id="forgot-btn" data-t="Forgot password?" style="width:100%;background:none;border:none;color:#b91c1c;font-weight:600;font-size:13px;cursor:pointer;margin-top:12px;padding:10px;text-align:center;-webkit-appearance:none;appearance:none" onclick="showForgotPassword()">Forgot password?</button>
+    <div class="form-group">
+      <label data-t="Email address">Email address</label>
+      <input type="email" id="login-email" placeholder="you@company.com" autocomplete="email">
+    </div>
+    <div class="form-group">
+      <label data-t="Password">Password</label>
+      <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <button class="btn" onclick="handleLogin()" style="cursor:pointer">Sign In</button>
+    <button style="width:100%;background:none;border:none;color:#b91c1c;font-weight:600;font-size:13px;cursor:pointer;margin-top:12px;padding:10px;text-align:center" onclick="showForgotPassword()">Forgot password?</button>
   </div>
 </div>
 
@@ -637,21 +635,7 @@ let equipTypeFilter = 'all';
 // AUTH
 // =====================
 // Attach events multiple ways for maximum iPad compatibility
-function attachAuthEvents() {
-  const form = document.getElementById('login-form');
-  if (form) {
-    form.onsubmit = handleLoginForm;
-    form.addEventListener('submit', handleLoginForm);
-  }
-  const forgotBtn = document.getElementById('forgot-btn');
-  if (forgotBtn) {
-    forgotBtn.onclick = showForgotPassword;
-    forgotBtn.addEventListener('click', showForgotPassword);
-    forgotBtn.addEventListener('touchend', function(e) { e.preventDefault(); showForgotPassword(); });
-  }
-}
-document.addEventListener('DOMContentLoaded', attachAuthEvents);
-setTimeout(attachAuthEvents, 300);
+// Auth buttons use direct onclick - simplest and most compatible
 function showForgotPassword() {
   document.getElementById('auth-screen').style.display = 'none';
   document.getElementById('forgot-screen').style.display = 'flex';
@@ -1899,4 +1883,15 @@ function adminTab(tab, el) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   el.classList.add('active');
   document.getElementById('admin-employees').style.display = tab === 'employees' ? 'block' : 'none';
-  document.getElementById('admin-equipment').style.displa
+  document.getElementById('admin-equipment').style.display = tab === 'equipment' ? 'block' : 'none';
+  if (tab === 'employees') loadAdminEmployees();
+}
+
+async function loadAdminEmployees() {
+  const el = document.getElementById('admin-emp-list');
+  el.innerHTML = '<div class="loading">Loading…</div>';
+  const { data } = await sb.from('employees').select('*').eq('is_active', true).order('name');
+  if (!data || data.length === 0) { el.innerHTML = '<div class="empty-state"><p>No employees yet. Add your first employee.</p></div>'; return; }
+  el.innerHTML = data.map(emp => {
+    const isMe = emp.email === currentEmployee?.email;
+    const deleteBtn = isMe ? '<span style="font-size:11px;color:var(--text-secondary);flex-shrink:0">You</span>' : '<button onclick="deleteEmployee(\''+emp.id+'\',\''+emp.name+'\')" style="background:var(--re
