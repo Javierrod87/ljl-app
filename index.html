@@ -994,14 +994,26 @@ async function openWODetail(id) {
 }
 
 function renderStatusButtons(currentStatus, id) {
-  const transitions = {
-    new: ['assigned','in_progress'],
-    assigned: ['in_progress','waiting_parts'],
-    in_progress: ['waiting_parts'],
-    waiting_parts: ['in_progress'],
-  };
-  const next = transitions[currentStatus] || [];
-  return next.map(s => `<button class="status-btn" onclick="updateWOStatus('${id}','${s}')">→ ${formatStatus(s)}</button>`).join('');
+  const options = [
+    { value: 'new', label: 'Waiting to Start' },
+    { value: 'in_progress', label: 'In Progress' },
+    { value: 'waiting_parts', label: 'Waiting on Parts' },
+  ].filter(o => o.value !== currentStatus);
+
+  return `<div class="field">
+    <select id="status-select-${id}" class="form-input" style="font-size:15px">
+      <option value="">Select new status…</option>
+      ${options.map(o => `<option value="${o.value}">${o.label}</option>`).join('')}
+    </select>
+    <button class="btn" style="margin-top:8px;width:100%" onclick="applyStatusChange('${id}')">Update Status</button>
+  </div>`;
+}
+
+async function applyStatusChange(id) {
+  const sel = document.getElementById('status-select-' + id);
+  const newStatus = sel?.value;
+  if (!newStatus) { showToast('Please select a status'); return; }
+  await updateWOStatus(id, newStatus);
 }
 
 async function updateWOStatus(id, newStatus) {
@@ -1610,20 +1622,4 @@ function statusDotColor(s) {
 
 function formatDate(d) {
   if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
-function formatDateTime(d) {
-  if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' · ' + new Date(d).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-}
-
-function showToast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 3000);
-}
-</script>
-</body>
-</html>
+  return new Date(d).toLocaleDateString('en-US', { m
