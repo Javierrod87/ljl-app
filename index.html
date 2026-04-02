@@ -963,12 +963,18 @@ async function openWODetail(id) {
         </div>
         <div class="field"><label>Change status to</label></div>
         ${renderStatusButtons(w.status, w.id)}
-        ${['in_progress','waiting_parts'].includes(w.status) ? `
-        <div class="field" style="margin-top:12px"><label>Resolution notes</label><textarea id="wo-resolution" placeholder="Describe what was done…">${w.resolution_notes || ''}</textarea></div>
-        <div class="field"><label>Labor hours</label><input type="number" id="wo-labor" placeholder="0.0" value="${w.labor_hours || ''}"></div>
-        <div class="field"><label>Parts cost ($)</label><input type="number" id="wo-parts-cost" placeholder="0.00" value="${w.parts_cost || ''}"></div>
-        <button class="btn" style="margin-top:8px" onclick="completeWO('${w.id}')">Mark as Completed</button>
-        ` : ''}
+        <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:14px">
+          <div style="font-size:13px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:10px">Mechanic Notes</div>
+          <div class="field"><textarea id="wo-resolution" placeholder="Describe what was done, parts replaced, findings…" style="min-height:100px">${w.resolution_notes || ''}</textarea></div>
+          <div class="field-row">
+            <div class="field"><label>Labor hours</label><input type="number" id="wo-labor" placeholder="0.0" value="${w.labor_hours || ''}"></div>
+            <div class="field"><label>Parts cost ($)</label><input type="number" id="wo-parts-cost" placeholder="0.00" value="${w.parts_cost || ''}"></div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="btn btn-secondary" style="flex:1" onclick="saveWONotes('${w.id}')">Save Notes</button>
+            <button class="btn" style="flex:1;background:#27ae60;border-color:#27ae60" onclick="completeWO('${w.id}')">Mark Complete</button>
+          </div>
+        </div>
       </div>
     </div>
     ` : ''}
@@ -992,7 +998,7 @@ function renderStatusButtons(currentStatus, id) {
     new: ['assigned','in_progress'],
     assigned: ['in_progress','waiting_parts'],
     in_progress: ['waiting_parts'],
-    waiting_parts: ['in_progress']
+    waiting_parts: ['in_progress'],
   };
   const next = transitions[currentStatus] || [];
   return next.map(s => `<button class="status-btn" onclick="updateWOStatus('${id}','${s}')">→ ${formatStatus(s)}</button>`).join('');
@@ -1015,11 +1021,24 @@ async function reassignWO(id, employeeId) {
   openWODetail(id);
 }
 
+async function saveWONotes(id) {
+  const notes = document.getElementById('wo-resolution')?.value || '';
+  const labor = document.getElementById('wo-labor')?.value || null;
+  const parts = document.getElementById('wo-parts-cost')?.value || null;
+  const { error } = await sb.from('work_orders').update({
+    resolution_notes: notes || null,
+    labor_hours: labor ? parseFloat(labor) : null,
+    parts_cost: parts ? parseFloat(parts) : null,
+    updated_at: new Date().toISOString()
+  }).eq('id', id);
+  if (error) { showToast('Error saving notes'); return; }
+  showToast('Notes saved!');
+}
+
 async function completeWO(id) {
   const notes = document.getElementById('wo-resolution')?.value || '';
   const labor = document.getElementById('wo-labor')?.value || null;
   const parts = document.getElementById('wo-parts-cost')?.value || null;
-  if (!notes) { showToast('Please add resolution notes before completing'); return; }
   const { error } = await sb.from('work_orders').update({ status: 'completed', completed_at: new Date().toISOString(), resolution_notes: notes, labor_hours: labor ? parseFloat(labor) : null, parts_cost: parts ? parseFloat(parts) : null, updated_at: new Date().toISOString() }).eq('id', id);
   if (error) { showToast('Error completing work order'); return; }
   await sb.from('work_order_status_history').insert({ work_order_id: id, from_status: 'in_progress', to_status: 'completed', changed_by_id: currentEmployee?.id });
