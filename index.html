@@ -469,14 +469,14 @@
     <div class="screen" id="screen-admin">
       <div class="tab-bar">
         <div class="tab active" onclick="adminTab('employees',this)">Employees</div>
-        <div class="tab" onclick="adminTab('equipment',this)">Add Equipment</div>
+        <div class="tab" id="tab-add-equipment" onclick="adminTab('equipment',this)">Add Equipment</div>
       </div>
 
       <!-- Employees tab -->
       <div id="admin-employees">
         <div class="section-header">
           <h2>Employees</h2>
-          <button onclick="showAddEmployee()">+ Add</button>
+          <button onclick="showAddEmployee()" id="btn-add-employee">+ Add</button>
         </div>
         <div class="card" id="admin-emp-list"><div class="loading">Loading…</div></div>
         <div class="form-section" style="margin-top:12px">
@@ -670,6 +670,7 @@ async function startApp() {
   document.getElementById('app').style.display = 'flex';
   showScreen('dashboard');
   initLanguage();
+  applyRolePermissions();
   loadDashboard();
   loadEquipmentOptions();
   loadMechanicsOptions();
@@ -783,6 +784,45 @@ async function triggerMaintenanceAlertEmails() {
     localStorage.setItem('lastAlertEmailSent', now.toString());
   } catch(e) {
     console.log('Alert email error:', e);
+  }
+}
+
+function applyRolePermissions() {
+  const role = currentEmployee?.role;
+  if (!role) return;
+
+  // Add Equipment tab — only admin and manager
+  const equipTab = document.getElementById('tab-add-equipment');
+  if (equipTab) {
+    if (['admin', 'manager'].includes(role)) {
+      equipTab.style.display = 'block';
+    } else {
+      equipTab.style.display = 'none';
+    }
+  }
+
+  // Add Employee button — only admin
+  const addEmpBtn = document.getElementById('btn-add-employee');
+  if (addEmpBtn) {
+    if (role === 'admin') {
+      addEmpBtn.style.display = 'block';
+    } else {
+      addEmpBtn.style.display = 'none';
+    }
+  }
+
+  // FAB (new work order) — hide for viewer
+  const fab = document.getElementById('fab-wo');
+  if (fab && role === 'viewer') {
+    fab.style.display = 'none';
+  }
+
+  // Admin nav — hide for mechanic and viewer
+  const adminNav = document.getElementById('nav-admin');
+  if (adminNav) {
+    if (['mechanic', 'viewer'].includes(role)) {
+      adminNav.style.display = 'none';
+    }
   }
 }
 
@@ -1229,7 +1269,7 @@ async function openWODetail(id) {
       </div>
     </div>
     ` : ''}
-    ${w.status === 'completed' && currentEmployee?.role && ['admin','manager'].includes(currentEmployee.role) ? `
+    ${w.status === 'completed' && currentEmployee?.role && ['admin','manager','foreman','mechanic'].includes(currentEmployee.role) ? `
     <button class="btn" style="margin-bottom:10px" onclick="closeWO('${w.id}')">Close Work Order (Archive)</button>
     ` : ''}
     <div class="card" style="margin-bottom:10px">
@@ -1601,21 +1641,4 @@ function showAddMaintSchedule(equipId, currentHours) {
       <div style="font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:10px">Predictive Calculator Settings</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <div class="field" style="margin:0"><label>Hours used per day</label><input type="number" id="ms-hrs-day" value="4" min="1" max="24" step="0.5"></div>
-        <div class="field" style="margin:0"><label>Days worked per week</label><input type="number" id="ms-days-week" value="5" min="1" max="7"></div>
-      </div>
-      <div style="font-size:11px;color:#9ca3af;margin-top:8px">Used to predict when service will be due on the calendar.</div>
-    </div>
-    <button class="btn" style="margin-top:14px" onclick="saveNewMaintSchedule('${equipId}')">Add Schedule</button>
-    <button class="btn btn-secondary" style="margin-top:8px" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
-  </div>`;
-  document.body.appendChild(overlay);
-}
-
-async function saveNewMaintSchedule(equipId) {
-  const serviceType = document.getElementById('ms-type').value.trim();
-  const interval = parseFloat(document.getElementById('ms-interval').value);
-  const lastHours = parseFloat(document.getElementById('ms-last').value || 0);
-  const threshold = parseFloat(document.getElementById('ms-threshold').value || 20);
-  const hrsPerDay = parseFloat(document.getElementById('ms-hrs-day').value || 4);
-  const daysPerWeek = parseFloat(document.getElementById('ms-days-week').value || 5);
-  if (!serviceType || !interval) { showToast('Please fill in service type and in
+        <div class="field" style="margin:0"><label>Days worked per week</label><input type="num
