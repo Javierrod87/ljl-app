@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="LJL Maintenance">
+<meta name="theme-color" content="#b91c1c">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="data:image/png;base64,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">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>LJL Maintenance Work Orders</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -830,6 +834,18 @@ async function sendTestAlertEmail() {
   }
   btn.textContent = 'Send Alert Email Now';
   btn.disabled = false;
+}
+
+function openWOFromEquip(woId) {
+  currentWOId = woId;
+  // Change back button to go back to equipment detail
+  document.getElementById('wo-detail-back').onclick = function() {
+    openEquipDetail(currentEquipId);
+    showScreen('equip-detail');
+  };
+  document.getElementById('wo-detail-back').innerHTML = '<svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg> Equipment';
+  showScreen('wo-detail');
+  openWODetail(woId);
 }
 
 async function logFreeFormMaintenance(equipId) {
@@ -1692,7 +1708,7 @@ async function openEquipDetail(id) {
     <div class="card" style="margin-bottom:10px">
       <div class="card-header"><h2>Work Order History</h2></div>
       <div class="card-body">
-        ${wos && wos.length > 0 ? wos.map(w => { const total = (parseFloat(w.labor_hours||0) * 0 + parseFloat(w.parts_cost||0)); const hasTotal = w.parts_cost || w.labor_hours; return `<div class="tl-item"><div class="tl-dot green">✓</div><div class="tl-body"><div class="tl-title">${w.work_order_number} · ${w.category}${w.parts_cost ? ' <span style="color:var(--green);font-weight:600">Parts: $' + parseFloat(w.parts_cost).toFixed(2) + '</span>' : ''}</div><div class="tl-sub">${w.description.substring(0,60)}${w.description.length > 60 ? '…' : ''}</div><div class="tl-sub">Completed ${formatDate(w.completed_at)} · ${w.assigned_to?.name || '—'}${w.labor_hours ? ' · ' + w.labor_hours + ' labor hrs' : ''}${w.resolution_notes ? ' · ' + w.resolution_notes.substring(0,40) : ''}</div></div></div>`; }).join('') : '<p style="color:var(--text-secondary);font-size:13px">No completed work orders yet.</p>'}
+        ${wos && wos.length > 0 ? wos.map(w => { return `<div class="tl-item" onclick="openWOFromEquip('${w.id}')" style="cursor:pointer;border-radius:8px;padding:6px;margin:-6px;transition:background 0.15s" onmouseover="this.style.background='var(--gray-light)'" onmouseout="this.style.background='transparent'"><div class="tl-dot green">✓</div><div class="tl-body"><div class="tl-title" style="display:flex;align-items:center;justify-content:space-between">${w.work_order_number} · ${w.category}${w.parts_cost ? ' <span style="color:var(--green);font-weight:600">Parts: $' + parseFloat(w.parts_cost).toFixed(2) + '</span>' : ''}<span style="font-size:11px;color:var(--blue);font-weight:600">View →</span></div><div class="tl-sub">${w.description.substring(0,60)}${w.description.length > 60 ? '…' : ''}</div><div class="tl-sub">Completed ${formatDate(w.completed_at)} · ${w.assigned_to?.name || '—'}${w.labor_hours ? ' · ' + w.labor_hours + ' labor hrs' : ''}${w.resolution_notes ? ' · ' + w.resolution_notes.substring(0,40) : ''}</div></div></div>`; }).join('') : '<p style="color:var(--text-secondary);font-size:13px">No completed work orders yet.</p>'}
       </div>
     </div>
     <div class="card" style="margin-bottom:10px">
@@ -1880,198 +1896,4 @@ async function loadAdminEmployees() {
   const el = document.getElementById('admin-emp-list');
   el.innerHTML = '<div class="loading">Loading…</div>';
   const { data } = await sb.from('employees').select('*').eq('is_active', true).order('name');
-  if (!data || data.length === 0) { el.innerHTML = '<div class="empty-state"><p>No employees yet. Add your first employee.</p></div>'; return; }
-  el.innerHTML = data.map(emp => {
-    const isMe = emp.email === currentEmployee?.email;
-    const deleteBtn = isMe ? '<span style="font-size:11px;color:var(--text-secondary);flex-shrink:0">You</span>' : '<button onclick="deleteEmployee(\''+emp.id+'\',\''+emp.name+'\')" style="background:var(--red-light);color:var(--red);border:1px solid var(--red);border-radius:6px;padding:5px 10px;font-size:12px;font-weight:600;cursor:pointer;flex-shrink:0">Remove</button>';
-    return '<div class="card-row" style="display:flex;align-items:center;gap:12px"><div style="width:40px;height:40px;border-radius:50%;background:var(--blue-light);color:var(--blue);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0">'+emp.name.charAt(0)+'</div><div style="flex:1"><div style="font-weight:600;font-size:15px">'+emp.name+'</div><div style="font-size:12px;color:var(--text-secondary)">'+emp.email+'</div></div><span class="badge role-'+emp.role+'">'+emp.role+'</span>'+deleteBtn+'</div>';
-  }).join('');
-}
-
-function showAddEmployee() {
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-overlay';
-  overlay.innerHTML = `<div class="modal">
-    <div class="modal-handle"></div>
-    <h2>Add Employee</h2>
-    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">This will create a login account for the employee. They will need to set their password via the email they receive.</p>
-    <div class="field"><label>Full Name</label><input type="text" id="emp-name" placeholder="John Smith"></div>
-    <div class="field"><label>Email Address</label><input type="email" id="emp-email" placeholder="john@company.com"></div>
-    <div class="field"><label>Temporary Password</label><input type="password" id="emp-password" placeholder="Give them a temporary password"></div>
-    <div class="field"><label>Role</label>
-      <select id="emp-role">
-        <option value="mechanic">Mechanic</option>
-        <option value="foreman">Foreman</option>
-        <option value="manager">Manager</option>
-        <option value="admin">Admin</option>
-        <option value="viewer">Viewer</option>
-      </select>
-    </div>
-    <button class="btn" onclick="createEmployee()">Create Account</button>
-    <button class="btn btn-secondary" style="margin-top:8px" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
-  </div>`;
-  document.body.appendChild(overlay);
-}
-
-async function deleteEmployee(employeeId, name) {
-  if (!confirm('Remove ' + name + ' from the app? They will no longer be able to log in.')) return;
-  const { error } = await sb.from('employees').update({ is_active: false }).eq('id', employeeId);
-  if (error) { showToast('Error removing employee'); return; }
-  showToast(name + ' has been removed');
-  loadAdminEmployees();
-}
-
-async function createEmployee() {
-  const name = document.getElementById('emp-name').value.trim();
-  const email = document.getElementById('emp-email').value.trim();
-  const password = document.getElementById('emp-password').value;
-  const role = document.getElementById('emp-role').value;
-  if (!name || !email || !password) { showToast('Please fill in all fields'); return; }
-
-  // Check if employee already exists but is inactive
-  const { data: existing } = await sb.from('employees').select('id, is_active').eq('email', email).single();
-  if (existing) {
-    // Reactivate existing employee
-    await sb.from('employees').update({ is_active: true, name, role }).eq('email', email);
-    document.querySelector('.modal-overlay')?.remove();
-    showToast('Employee account reactivated!');
-    loadAdminEmployees();
-    return;
-  }
-
-  // Create new auth user
-  const { data, error } = await sb.auth.signUp({ email, password });
-  if (error) { showToast('Error: ' + error.message); return; }
-  if (data.user) {
-    await sb.from('employees').insert({ auth_user_id: data.user.id, name, email, role });
-  }
-  document.querySelector('.modal-overlay')?.remove();
-  showToast('Employee account created!');
-  loadAdminEmployees();
-}
-
-async function submitEquipment() {
-  const unitNumber = document.getElementById('eq-unit').value.trim();
-  const typeId = document.getElementById('eq-type').value;
-  const make = document.getElementById('eq-make').value.trim();
-  const model = document.getElementById('eq-model').value.trim();
-  const year = document.getElementById('eq-year').value;
-  const hours = document.getElementById('eq-hours').value;
-  const serial = document.getElementById('eq-serial').value.trim();
-  const location = document.getElementById('eq-location').value.trim();
-  if (!unitNumber || !typeId) { showToast('Unit number and type are required'); return; }
-  const { data: equip, error } = await sb.from('equipment').insert({ unit_number: unitNumber, equipment_type_id: typeId, make: make || null, model: model || null, year: year ? parseInt(year) : null, current_hours: hours ? parseFloat(hours) : 0, serial_number: serial || null, location: location || null }).select().single();
-  if (error) { showToast('Error: ' + (error.message.includes('unique') ? 'Unit number already exists' : error.message)); return; }
-  const scheduleRows = document.querySelectorAll('.schedule-row');
-  for (const row of scheduleRows) {
-    const type = row.querySelector('.sr-type').value.trim();
-    const interval = parseFloat(row.querySelector('.sr-interval').value);
-    const threshold = parseFloat(row.querySelector('.sr-threshold').value || 20);
-    if (type && interval) {
-      const lastHrs = parseFloat(hours || 0);
-      await sb.from('maintenance_schedules').insert({ equipment_id: equip.id, service_type: type, interval_hours: interval, alert_threshold_hours: threshold, last_service_hours: lastHrs, next_due_hours: lastHrs + interval });
-    }
-  }
-  showToast('Equipment added!');
-  ['eq-unit','eq-make','eq-model','eq-year','eq-hours','eq-serial','eq-location'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
-  document.getElementById('maint-schedule-builder').innerHTML = '';
-  scheduleRowCount = 0;
-  loadEquipmentOptions();
-}
-
-function addScheduleRow() {
-  scheduleRowCount++;
-  const div = document.createElement('div');
-  div.className = 'schedule-row';
-  div.style.cssText = 'background:var(--gray-light);border-radius:8px;padding:12px;margin-bottom:10px';
-  div.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-size:13px;font-weight:600">Service ${scheduleRowCount}</span><button onclick="this.closest('.schedule-row').remove()" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:18px">×</button></div>
-    <div class="field-row">
-      <div class="field"><label style="font-size:12px">Service type</label><input class="sr-type" type="text" placeholder="e.g. Oil Change" style="font-size:14px;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;width:100%"></div>
-      <div class="field"><label style="font-size:12px">Every (hrs)</label><input class="sr-interval" type="number" placeholder="250" style="font-size:14px;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;width:100%"></div>
-    </div>
-    <div class="field"><label style="font-size:12px">Alert when this many hours away</label><input class="sr-threshold" type="number" value="20" style="font-size:14px;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;width:100%"></div>
-  `;
-  document.getElementById('maint-schedule-builder').appendChild(div);
-}
-
-// =====================
-// HELPERS / OPTIONS
-// =====================
-async function loadEquipmentOptions() {
-  const { data } = await sb.from('equipment').select('id, unit_number, make, model').eq('is_active', true).order('unit_number');
-  const sel = document.getElementById('wo-equipment');
-  if (sel) { sel.innerHTML = '<option value="">Select equipment…</option>' + (data || []).map(e => `<option value="${e.id}">${e.unit_number} — ${e.make || ''} ${e.model || ''}</option>`).join(''); }
-}
-
-async function loadMechanicsOptions() {
-  const { data } = await sb.from('employees').select('id, name, role').eq('is_active', true).in('role', ['mechanic','foreman','manager','admin']);
-  const sel = document.getElementById('wo-assign');
-  if (sel) { sel.innerHTML = '<option value="">Unassigned</option>' + (data || []).map(e => `<option value="${e.id}">${e.name} (${e.role})</option>`).join(''); }
-}
-
-async function loadMechanicsIntoSelect(selId, currentId) {
-  const { data } = await sb.from('employees').select('id, name, role').eq('is_active', true).in('role', ['mechanic','foreman','manager','admin']);
-  const sel = document.getElementById(selId);
-  if (sel) { sel.innerHTML = '<option value="">— keep current —</option>' + (data || []).map(e => `<option value="${e.id}" ${e.id === currentId ? 'selected' : ''}>${e.name} (${e.role})</option>`).join(''); }
-}
-
-async function loadEquipmentTypes() {
-  const { data } = await sb.from('equipment_types').select('*').order('name');
-  const sel = document.getElementById('eq-type');
-  if (sel) { sel.innerHTML = '<option value="">Select type…</option>' + (data || []).map(t => `<option value="${t.id}">${t.name}</option>`).join(''); }
-}
-
-function getEquipAlertStatus(e, schedules) {
-  if (!schedules) return { cls: 'badge-gray', label: 'OK' };
-  const hrs = parseFloat(e.current_hours || 0);
-  let hasOverdue = false, hasSoon = false;
-  schedules.forEach(s => {
-    const rem = parseFloat(s.next_due_hours || 0) - hrs;
-    if (rem <= 0) hasOverdue = true;
-    else if (rem <= parseFloat(s.alert_threshold_hours || 20)) hasSoon = true;
-  });
-  if (hasOverdue) return { cls: 'badge-red', label: 'Overdue' };
-  if (hasSoon) return { cls: 'badge-amber', label: 'Due soon' };
-  return { cls: 'badge-green', label: 'OK' };
-}
-
-function renderStatusBadge(status) {
-  const map = { new: 'badge-gray', assigned: 'badge-blue', in_progress: 'badge-blue', waiting_parts: 'badge-amber', completed: 'badge-green', closed: 'badge-gray' };
-  return `<span class="badge ${map[status] || 'badge-gray'}">${formatStatus(status)}</span>`;
-}
-
-function renderPriBadge(priority) {
-  const map = { critical: 'badge-red', high: 'badge-amber', normal: 'badge-blue', low: 'badge-gray' };
-  return `<span class="badge ${map[priority] || 'badge-gray'}">${priority?.charAt(0).toUpperCase() + priority?.slice(1)}</span>`;
-}
-
-function formatStatus(s) {
-  const map = { new: 'New', assigned: 'Assigned', in_progress: 'In Progress', waiting_parts: 'Waiting Parts', completed: 'Completed', closed: 'Closed' };
-  return map[s] || s;
-}
-
-function statusDotColor(s) {
-  const map = { new: '', assigned: 'amber', in_progress: 'blue', waiting_parts: 'amber', completed: 'green', closed: 'green' };
-  return map[s] || '';
-}
-
-function formatDate(d) {
-  if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
-function formatDateTime(d) {
-  if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' · ' + new Date(d).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-}
-
-function showToast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 3000);
-}
-</script>
-</body>
-</html>
+  if (!data || data.length === 0) { el.inner
