@@ -267,8 +267,8 @@
       <label data-t="Password">Password</label>
       <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password">
     </div>
-    <button class="btn" onclick="handleLogin()" data-t="Sign In">Sign In</button>
-    <button onclick="showForgotPassword()" data-t="Forgot password?" style="width:100%;background:none;border:none;color:#b91c1c;font-weight:600;font-size:13px;cursor:pointer;margin-top:12px;padding:10px;text-align:center">Forgot password?</button>
+    <button class="btn" id="signin-btn" data-t="Sign In">Sign In</button>
+    <button id="forgot-btn" data-t="Forgot password?" style="width:100%;background:none;border:none;color:#b91c1c;font-weight:600;font-size:13px;cursor:pointer;margin-top:12px;padding:10px;text-align:center;-webkit-appearance:none;appearance:none">Forgot password?</button>
   </div>
 </div>
 
@@ -628,8 +628,20 @@ let currentEquipId = null;
 let equipTypeFilter = 'all';
 
 // =====================
-// AUTH
+// AUTH — use event listeners instead of inline onclick for better iPad compatibility
 // =====================
+document.addEventListener('DOMContentLoaded', function() {
+  const signinBtn = document.getElementById('signin-btn');
+  const forgotBtn = document.getElementById('forgot-btn');
+  if (signinBtn) signinBtn.addEventListener('click', handleLogin);
+  if (forgotBtn) forgotBtn.addEventListener('click', showForgotPassword);
+  
+  // Also handle enter key on password field
+  const pwField = document.getElementById('login-password');
+  if (pwField) pwField.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') handleLogin();
+  });
+});
 function showForgotPassword() {
   document.getElementById('auth-screen').style.display = 'none';
   document.getElementById('forgot-screen').style.display = 'flex';
@@ -1094,4 +1106,972 @@ const translations = {
     'Employees': 'Empleados', 'Add Equipment': 'Agregar Equipo',
     '+ Add': '+ Agregar', 'Remove': 'Eliminar', 'You': 'Tú',
     'EMAIL ALERTS': 'ALERTAS POR EMAIL',
-    'Send a maintenan
+    'Send a maintenance alert email to all managers and mechanics. The app sends this automatically once per day when alerts exist.': 'Envía un correo de alerta de mantenimiento a todos los gerentes y mecánicos. La app lo envía automáticamente una vez al día cuando hay alertas.',
+    'Send Alert Email Now': 'Enviar Alerta por Email Ahora',
+    // Login
+    'Sign in to your account': 'Inicia sesión en tu cuenta',
+    'Email address': 'Correo electrónico', 'Password': 'Contraseña', 'Sign In': 'Iniciar Sesión',
+    'Forgot password?': '¿Olvidaste tu contraseña?', 'Reset Password': 'Restablecer Contraseña',
+    'Enter your email to receive a reset link': 'Ingresa tu correo para recibir un enlace de restablecimiento',
+    'Send Reset Link': 'Enviar Enlace', 'Back to Sign In': 'Volver al Inicio de Sesión',
+  }
+};
+
+let currentLang = localStorage.getItem('ljl_lang') || 'en';
+
+function t(key) {
+  return translations[currentLang][key] || translations['en'][key] || key;
+}
+
+function toggleLanguage() {
+  // Read from localStorage directly to avoid state issues
+  const current = localStorage.getItem('ljl_lang') || 'en';
+  currentLang = current === 'en' ? 'es' : 'en';
+  localStorage.setItem('ljl_lang', currentLang);
+  document.getElementById('lang-toggle').textContent = currentLang === 'en' ? 'EN' : 'ES';
+  applyTranslations();
+  // Re-render current screen to apply translations to dynamic content
+  const screens = ['dashboard','workorders','equipment','alerts','admin'];
+  for (const s of screens) {
+    if (document.getElementById('screen-' + s)?.classList.contains('active')) {
+      if (s === 'dashboard') loadDashboard();
+      else if (s === 'workorders') loadWorkOrders();
+      else if (s === 'equipment') loadEquipment();
+      else if (s === 'alerts') loadAlerts();
+      else if (s === 'admin') loadAdminEmployees();
+      break;
+    }
+  }
+}
+
+function applyTranslations() {
+  document.querySelectorAll('[data-t]').forEach(el => {
+    const key = el.getAttribute('data-t');
+    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+      el.placeholder = t(key);
+    } else {
+      el.textContent = t(key);
+    }
+  });
+
+  // Translate filter chips
+  const filterMap = {
+    'All': t('All'), 'New': t('New'), 'Assigned': t('Assigned'),
+    'In Progress': t('In Progress'), 'Waiting Parts': t('Waiting Parts')
+  };
+  document.querySelectorAll('.filter-chip').forEach(chip => {
+    const txt = chip.textContent.trim();
+    if (filterMap[txt]) chip.textContent = filterMap[txt];
+  });
+
+  // Update topbar title based on current screen
+  const titleEl = document.getElementById('topbar-title');
+  if (titleEl) {
+    const titleMap = {
+      'Dashboard': t('Dashboard'), 'Work Orders': t('Work Orders'),
+      'New Work Order': t('New Work Order'), 'Work Order': t('Work Order'),
+      'Fleet': t('Fleet'), 'Equipment Detail': t('Equipment Detail'),
+      'Maintenance Alerts': t('Maintenance Alerts'), 'Admin': t('Admin')
+    };
+    const cur = titleEl.textContent.trim();
+    if (titleMap[cur]) titleEl.textContent = titleMap[cur];
+  }
+
+  // Translate metric card labels
+  const labelMap = {
+    'Open Work Orders': t('Open Work Orders'), 'Critical': t('Critical'),
+    'Overdue Maint.': t('Overdue Maint.'), 'Due Soon': t('Due Soon')
+  };
+  document.querySelectorAll('.metric-label').forEach(el => {
+    const txt = el.textContent.trim();
+    if (labelMap[txt]) el.textContent = labelMap[txt];
+  });
+
+  // Translate section headers
+  document.querySelectorAll('.section-header h2').forEach(el => {
+    const txt = el.textContent.trim();
+    const map = {
+      'Active Work Orders': t('Active Work Orders'),
+      'Maintenance Alerts': t('Maintenance Alerts'),
+    };
+    if (map[txt]) el.textContent = map[txt];
+  });
+}
+
+function initLanguage() {
+  const saved = localStorage.getItem('ljl_lang') || 'en';
+  currentLang = saved;
+  const btn = document.getElementById('lang-toggle');
+  if (btn) btn.textContent = saved.toUpperCase();
+  applyTranslations();
+}
+
+// Check for password reset token in URL
+(async function() {
+  try {
+    const hashParams = new URLSearchParams(window.location.hash.replace('#', ''));
+    const accessToken = hashParams.get('access_token');
+    const tokenType = hashParams.get('type');
+
+    if (accessToken && tokenType === 'recovery') {
+      const { error } = await sb.auth.setSession({ 
+        access_token: accessToken, 
+        refresh_token: hashParams.get('refresh_token') || '' 
+      });
+      if (!error) {
+        document.getElementById('auth-screen').style.display = 'none';
+        document.getElementById('reset-screen').style.display = 'flex';
+        window.location.hash = '';
+        return;
+      }
+    }
+  } catch(e) {
+    console.log('Hash check error:', e);
+  }
+
+  sb.auth.getSession().then(({ data: { session } }) => {
+    if (session) {
+      currentUser = session.user;
+      loadEmployee().then(() => startApp());
+    }
+  });
+})();
+
+// =====================
+// NAVIGATION
+// =====================
+function showScreen(name) {
+  setTimeout(applyTranslations, 50);
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('screen-' + name)?.classList.add('active');
+  document.getElementById('nav-' + name)?.classList.add('active');
+  
+  const fab = document.getElementById('fab-wo');
+  const titles = { dashboard: 'Dashboard', workorders: 'Work Orders', 'create-wo': 'New Work Order', 'wo-detail': 'Work Order', equipment: 'Fleet', 'equip-detail': 'Equipment Detail', alerts: 'Maintenance Alerts', admin: 'Admin' };
+  document.getElementById('topbar-title').textContent = titles[name] || 'LJL Maintenance';
+  fab.style.display = ['dashboard','workorders','equipment'].includes(name) ? 'flex' : 'none';
+  currentScreen = name;
+
+  if (name === 'dashboard') loadDashboard();
+  if (name === 'workorders') loadWorkOrders();
+  if (name === 'equipment') loadEquipment();
+  if (name === 'alerts') loadAlerts();
+  if (name === 'admin') { loadAdminEmployees(); }
+  if (name === 'create-wo') { resetCreateWOForm(); }
+}
+
+// =====================
+// DASHBOARD
+// =====================
+async function loadDashboard() {
+  const { data: wos } = await sb.from('work_orders').select('*, equipment(unit_number, make, model), assigned_to:employees!work_orders_assigned_to_id_fkey(name)').eq('is_archived', false).not('status', 'in', '("completed","closed")');
+  const { data: schedules } = await sb.from('maintenance_schedules').select('*, equipment(unit_number, current_hours)').eq('is_active', true);
+
+  const open = wos?.length || 0;
+  const critical = wos?.filter(w => w.priority === 'critical').length || 0;
+  document.getElementById('m-open').textContent = open;
+  document.getElementById('m-critical').textContent = critical;
+
+  let overdue = 0, soon = 0;
+  schedules?.forEach(s => {
+    const hrs = parseFloat(s.equipment?.current_hours || 0);
+    const remaining = parseFloat(s.next_due_hours || 0) - hrs;
+    if (remaining <= 0) overdue++;
+    else if (remaining <= parseFloat(s.alert_threshold_hours || 20)) soon++;
+  });
+  document.getElementById('m-overdue').textContent = overdue;
+  document.getElementById('m-soon').textContent = soon;
+
+  // Trigger email alerts if any overdue or due soon
+  if (overdue > 0 || soon > 0) {
+    triggerMaintenanceAlertEmails();
+  }
+
+  const woBadge = document.getElementById('wo-badge');
+  if (open > 0) { woBadge.textContent = open; woBadge.style.display = 'block'; } else { woBadge.style.display = 'none'; }
+  const alertCount = overdue + soon;
+  const alertBadge = document.getElementById('alert-badge');
+  if (alertCount > 0) { alertBadge.textContent = alertCount; alertBadge.style.display = 'block'; } else { alertBadge.style.display = 'none'; }
+
+  const woEl = document.getElementById('dash-wo-list');
+  if (!wos || wos.length === 0) { woEl.innerHTML = '<div class="empty-state"><p>No open work orders</p></div>'; }
+  else { woEl.innerHTML = wos.slice(0,5).map(w => renderWOItem(w)).join(''); }
+
+  const alertEl = document.getElementById('dash-alert-list');
+  const alertSchedules = schedules?.filter(s => {
+    const hrs = parseFloat(s.equipment?.current_hours || 0);
+    return (parseFloat(s.next_due_hours || 0) - hrs) <= parseFloat(s.alert_threshold_hours || 20);
+  }).slice(0,5) || [];
+  if (alertSchedules.length === 0) { alertEl.innerHTML = '<div class="empty-state"><p>No maintenance alerts</p></div>'; }
+  else { alertEl.innerHTML = alertSchedules.map(s => renderAlertItem(s)).join(''); }
+}
+
+// =====================
+// WORK ORDERS
+// =====================
+async function loadWorkOrders() {
+  const el = document.getElementById('wo-list');
+  el.innerHTML = '<div class="loading">Loading…</div>';
+  const { data } = await sb.from('work_orders').select('*, equipment(unit_number, make, model), submitted_by:employees!work_orders_submitted_by_id_fkey(name), assigned_to:employees!work_orders_assigned_to_id_fkey(name)').eq('is_archived', false).not('status', 'in', '("completed","closed")').order('created_at', { ascending: false });
+  allWorkOrders = data || [];
+  renderWOList();
+}
+
+function renderWOList() {
+  const el = document.getElementById('wo-list');
+  let filtered = allWorkOrders;
+  if (woFilter !== 'all') filtered = allWorkOrders.filter(w => w.status === woFilter);
+  if (filtered.length === 0) { el.innerHTML = '<div class="empty-state"><p>No work orders found</p></div>'; return; }
+  el.innerHTML = filtered.map(w => renderWOItem(w)).join('');
+}
+
+function renderWOItem(w) {
+  const priClass = { critical: 'pri-critical', high: 'pri-high', normal: 'pri-normal', low: 'pri-low' }[w.priority] || 'pri-normal';
+  const statusBadge = renderStatusBadge(w.status);
+  const priBadge = renderPriBadge(w.priority);
+  const equip = w.equipment ? `${w.equipment.unit_number} — ${w.equipment.make || ''} ${w.equipment.model || ''}`.trim() : 'Unknown';
+  return `<div class="wo-item" onclick="openWODetail('${w.id}')">
+    <div class="wo-item-top">
+      <span class="wo-number">${w.work_order_number || ''}</span>
+      <div style="display:flex;gap:6px">${priBadge}${statusBadge}</div>
+    </div>
+    <div class="wo-equip"><span class="pri-indicator ${priClass}"></span> ${equip}</div>
+    <div class="wo-desc">${w.description}</div>
+    <div class="wo-meta">
+      ${w.assigned_to ? `<span style="font-size:12px;color:var(--text-secondary)">→ ${w.assigned_to.name}</span>` : '<span style="font-size:12px;color:var(--text-secondary)">Unassigned</span>'}
+      <span style="font-size:12px;color:var(--text-secondary)">${formatDate(w.created_at)}</span>
+    </div>
+  </div>`;
+}
+
+function filterWO(val, el) {
+  woFilter = val;
+  document.querySelectorAll('#wo-filters .filter-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  renderWOList();
+}
+
+async function openWODetail(id) {
+  currentWOId = id;
+  showScreen('wo-detail');
+  const el = document.getElementById('wo-detail-content');
+  el.innerHTML = '<div class="loading">Loading…</div>';
+  const { data: w } = await sb.from('work_orders').select('*, equipment(id, unit_number, make, model), submitted_by:employees!work_orders_submitted_by_id_fkey(name), assigned_to:employees!work_orders_assigned_to_id_fkey(name)').eq('id', id).single();
+  const { data: hist } = await sb.from('work_order_status_history').select('*, changed_by:employees!work_order_status_history_changed_by_id_fkey(name)').eq('work_order_id', id).order('changed_at', { ascending: false });
+  if (!w) { el.innerHTML = '<p>Work order not found.</p>'; return; }
+  
+  // Load attachments
+  const { data: attachments } = await sb.from('work_order_attachments').select('*').eq('work_order_id', id);
+  const equip = w.equipment ? `${w.equipment.unit_number} — ${w.equipment.make || ''} ${w.equipment.model || ''}`.trim() : 'Unknown';
+  const canEdit = currentEmployee && ['admin','manager','foreman','mechanic'].includes(currentEmployee.role);
+  el.innerHTML = `
+    <div class="detail-header">
+      <div class="wo-number">${w.work_order_number || ''}</div>
+      <div class="detail-title">${equip}</div>
+      <div class="detail-subtitle">${w.category ? w.category.charAt(0).toUpperCase() + w.category.slice(1) : ''} Issue</div>
+      <div class="detail-badges">${renderPriBadge(w.priority)}${renderStatusBadge(w.status)}</div>
+    </div>
+    <div class="card card-body" style="margin-bottom:10px">
+      <div class="info-list">
+        <div class="info-row"><span class="info-label">Submitted by</span><span class="info-value">${w.submitted_by?.name || '—'}</span></div>
+        <div class="info-row"><span class="info-label">Assigned to</span><span class="info-value">${w.assigned_to?.name || 'Unassigned'}</span></div>
+        <div class="info-row"><span class="info-label">Location</span><span class="info-value">${w.location || '—'}</span></div>
+        <div class="info-row"><span class="info-label">Equip. hours</span><span class="info-value">${w.equipment_hours ? w.equipment_hours + ' hrs' : '—'}</span></div>
+        <div class="info-row"><span class="info-label">Created</span><span class="info-value">${formatDateTime(w.created_at)}</span></div>
+        ${w.due_date ? `<div class="info-row"><span class="info-label">Due date</span><span class="info-value">${w.due_date}</span></div>` : ''}
+      </div>
+    </div>
+    ${attachments && attachments.length > 0 ? `<div class="card" style="margin-bottom:10px"><div class="card-header"><h2>Photos (${attachments.length})</h2></div><div class="card-body" style="display:flex;flex-wrap:wrap;gap:8px">${attachments.map(a => '<a href="'+a.file_url+'" target="_blank"><img src="'+a.file_url+'" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--border)"></a>').join('')}</div></div>` : ''}
+    <div class="card" style="margin-bottom:10px">
+      <div class="card-header"><h2>Description</h2></div>
+      <div class="card-body"><p style="font-size:14px;line-height:1.6;color:var(--text)">${w.description}</p></div>
+    </div>
+    ${canEdit && !['completed','closed'].includes(w.status) ? `
+    <div class="card" style="margin-bottom:10px">
+      <div class="card-header"><h2>Update Status</h2></div>
+      <div class="card-body">
+        <div class="field">
+          <label>Assign to mechanic</label>
+          <select id="wo-reassign" onchange="reassignWO('${w.id}',this.value)">
+            <option value="">— keep current —</option>
+          </select>
+        </div>
+        <div class="field"><label>Change status to</label></div>
+        ${renderStatusButtons(w.status, w.id)}
+        <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:14px">
+          <div style="font-size:13px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:10px">Mechanic Notes</div>
+          <div class="field"><textarea id="wo-resolution" placeholder="Describe what was done, parts replaced, findings…" style="min-height:100px">${w.resolution_notes || ''}</textarea></div>
+          <div class="field-row">
+            <div class="field"><label>Labor hours</label><input type="number" id="wo-labor" placeholder="0.0" value="${w.labor_hours || ''}"></div>
+            <div class="field"><label>Parts cost ($)</label><input type="number" id="wo-parts-cost" placeholder="0.00" value="${w.parts_cost || ''}"></div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="btn btn-secondary" style="flex:1" onclick="saveWONotes('${w.id}')">Save Notes</button>
+            <button class="btn" style="flex:1;background:#27ae60;border-color:#27ae60" onclick="completeWO('${w.id}')">Mark Complete</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    ` : ''}
+    ${w.status === 'completed' && currentEmployee?.role && ['admin','manager','foreman','mechanic'].includes(currentEmployee.role) ? `
+    <button class="btn" style="margin-bottom:10px" onclick="closeWO('${w.id}')">Close Work Order (Archive)</button>
+    ` : ''}
+    <div class="card" style="margin-bottom:10px">
+      <div class="card-header"><h2>Status History</h2></div>
+      <div class="card-body">
+        <div class="timeline">
+          ${hist?.map(h => `<div class="tl-item"><div class="tl-dot ${statusDotColor(h.to_status)}"></div><div class="tl-body"><div class="tl-title">${formatStatus(h.to_status)}</div><div class="tl-sub">${h.changed_by?.name || '—'} · ${formatDateTime(h.changed_at)}${h.note ? ' · ' + h.note : ''}</div></div></div>`).join('') || '<p style="color:var(--text-secondary);font-size:13px">No history yet.</p>'}
+        </div>
+      </div>
+    </div>
+  `;
+  loadMechanicsIntoSelect('wo-reassign', w.assigned_to_id);
+}
+
+function renderStatusButtons(currentStatus, id) {
+  const options = [
+    { value: 'new', label: 'Waiting to Start' },
+    { value: 'in_progress', label: 'In Progress' },
+    { value: 'waiting_parts', label: 'Waiting on Parts' },
+  ].filter(o => o.value !== currentStatus);
+
+  return `<div class="field">
+    <select id="status-select-${id}" class="form-input" style="font-size:15px">
+      <option value="">Select new status…</option>
+      ${options.map(o => `<option value="${o.value}">${o.label}</option>`).join('')}
+    </select>
+    <button class="btn" style="margin-top:8px;width:100%" onclick="applyStatusChange('${id}')">Update Status</button>
+  </div>`;
+}
+
+async function applyStatusChange(id) {
+  const sel = document.getElementById('status-select-' + id);
+  const newStatus = sel?.value;
+  if (!newStatus) { showToast('Please select a status'); return; }
+  await updateWOStatus(id, newStatus);
+}
+
+async function updateWOStatus(id, newStatus) {
+  const oldWO = allWorkOrders.find(w => w.id === id);
+  const { error } = await sb.from('work_orders').update({ status: newStatus, updated_at: new Date().toISOString(), ...(newStatus === 'in_progress' ? { started_at: new Date().toISOString() } : {}), ...(newStatus === 'assigned' ? { assigned_at: new Date().toISOString() } : {}) }).eq('id', id);
+  if (error) { showToast('Error updating status'); return; }
+  await sb.from('work_order_status_history').insert({ work_order_id: id, from_status: oldWO?.status, to_status: newStatus, changed_by_id: currentEmployee?.id });
+  showToast('Status updated to ' + formatStatus(newStatus));
+  openWODetail(id);
+}
+
+async function reassignWO(id, employeeId) {
+  if (!employeeId) return;
+  await sb.from('work_orders').update({ assigned_to_id: employeeId, status: 'assigned', assigned_at: new Date().toISOString() }).eq('id', id);
+  await sb.from('work_order_status_history').insert({ work_order_id: id, from_status: null, to_status: 'assigned', changed_by_id: currentEmployee?.id, note: 'Reassigned' });
+  showToast('Work order reassigned');
+  openWODetail(id);
+}
+
+async function saveWONotes(id) {
+  const notes = document.getElementById('wo-resolution')?.value || '';
+  const labor = document.getElementById('wo-labor')?.value || null;
+  const parts = document.getElementById('wo-parts-cost')?.value || null;
+  const { error } = await sb.from('work_orders').update({
+    resolution_notes: notes || null,
+    labor_hours: labor ? parseFloat(labor) : null,
+    parts_cost: parts ? parseFloat(parts) : null,
+    updated_at: new Date().toISOString()
+  }).eq('id', id);
+  if (error) { showToast('Error saving notes'); return; }
+  showToast('Notes saved!');
+}
+
+async function completeWO(id) {
+  const notes = document.getElementById('wo-resolution')?.value || '';
+  const labor = document.getElementById('wo-labor')?.value || null;
+  const parts = document.getElementById('wo-parts-cost')?.value || null;
+  const { error } = await sb.from('work_orders').update({ status: 'completed', completed_at: new Date().toISOString(), resolution_notes: notes, labor_hours: labor ? parseFloat(labor) : null, parts_cost: parts ? parseFloat(parts) : null, updated_at: new Date().toISOString() }).eq('id', id);
+  if (error) { showToast('Error completing work order'); return; }
+  await sb.from('work_order_status_history').insert({ work_order_id: id, from_status: 'in_progress', to_status: 'completed', changed_by_id: currentEmployee?.id });
+  showToast('Work order marked complete!');
+  openWODetail(id);
+}
+
+async function closeWO(id) {
+  await sb.from('work_orders').update({ status: 'closed', closed_at: new Date().toISOString(), is_archived: true, updated_at: new Date().toISOString() }).eq('id', id);
+  await sb.from('work_order_status_history').insert({ work_order_id: id, from_status: 'completed', to_status: 'closed', changed_by_id: currentEmployee?.id });
+  showToast('Work order closed and archived');
+  showScreen('workorders');
+}
+
+async function submitWorkOrder() {
+  const equipId = document.getElementById('wo-equipment').value;
+  const desc = document.getElementById('wo-description').value.trim();
+  const priority = document.getElementById('wo-priority').value;
+  const category = document.getElementById('wo-category').value;
+  const location = document.getElementById('wo-location').value.trim();
+  const assignTo = document.getElementById('wo-assign').value;
+  const hours = document.getElementById('wo-hours').value;
+  const dueDate = document.getElementById('wo-due-date').value;
+  if (!equipId) { showToast('Please select equipment'); return; }
+  if (!desc) { showToast('Please enter a description'); return; }
+  const insertData = { equipment_id: equipId, description: desc, priority, category, submitted_by_id: currentEmployee?.id, status: assignTo ? 'assigned' : 'new', location: location || null, equipment_hours: hours ? parseFloat(hours) : null, assigned_to_id: assignTo || null, assigned_at: assignTo ? new Date().toISOString() : null, due_date: dueDate || null };
+  const { data, error } = await sb.from('work_orders').insert(insertData).select().single();
+  if (error) { showToast('Error creating work order: ' + error.message); return; }
+  await sb.from('work_order_status_history').insert({ work_order_id: data.id, to_status: insertData.status, changed_by_id: currentEmployee?.id, note: 'Work order created' });
+  if (hours) { await sb.from('hour_readings').insert({ equipment_id: equipId, hours: parseFloat(hours), submitted_by_id: currentEmployee?.id }); await sb.from('equipment').update({ current_hours: parseFloat(hours) }).eq('id', equipId).lt('current_hours', parseFloat(hours)); }
+  await uploadPhotos(data.id);
+  showToast('Work order created!');
+  // Send email notification
+  fetch('https://fahkluyuvgxhmpdkvrcr.supabase.co/functions/v1/rapid-function', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZhaGtsdXl1dmd4aG1wZGt2cmNyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwNTUwMjAsImV4cCI6MjA5MDYzMTAyMH0.5ALFe-1xuwKUvlKDykngVQK1vbLRCKbsnU3KiAus46o'
+    },
+    body: JSON.stringify({ work_order_id: data.id })
+  }).catch(e => console.log('WO notify error:', e));
+  showScreen('workorders');
+}
+
+function previewPhotos(input) {
+  const preview = document.getElementById('photo-preview');
+  preview.innerHTML = '';
+  const files = Array.from(input.files);
+  files.forEach((file, i) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const div = document.createElement('div');
+      div.style.cssText = 'position:relative;width:80px;height:80px';
+      div.innerHTML = '<img src="'+e.target.result+'" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">' +
+        '<button onclick="removePhoto('+i+')" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:#b91c1c;color:white;border:none;cursor:pointer;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center">×</button>';
+      preview.appendChild(div);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function removePhoto(index) {
+  const input = document.getElementById('wo-photos');
+  const dt = new DataTransfer();
+  Array.from(input.files).forEach((file, i) => { if (i !== index) dt.items.add(file); });
+  input.files = dt.files;
+  previewPhotos(input);
+}
+
+async function uploadPhotos(workOrderId) {
+  const input = document.getElementById('wo-photos');
+  if (!input.files || input.files.length === 0) return;
+  for (const file of input.files) {
+    const ext = file.name.split('.').pop();
+    const fileName = workOrderId + '/' + Date.now() + '.' + ext;
+    const { data, error } = await sb.storage.from('work-order-photos').upload(fileName, file);
+    if (!error && data) {
+      const { data: urlData } = sb.storage.from('work-order-photos').getPublicUrl(fileName);
+      await sb.from('work_order_attachments').insert({
+        work_order_id: workOrderId,
+        file_url: urlData.publicUrl,
+        file_name: file.name,
+        uploaded_by_id: currentEmployee?.id
+      });
+    }
+  }
+}
+
+function resetCreateWOForm() {
+  ['wo-equipment','wo-priority','wo-category','wo-assign'].forEach(id => { const el = document.getElementById(id); if(el) el.value = el.tagName === 'SELECT' ? el.options[0]?.value : ''; });
+  ['wo-description','wo-location','wo-hours','wo-due-date'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+  const sel = document.getElementById('wo-priority'); if(sel) sel.value = 'normal';
+}
+
+// =====================
+// EQUIPMENT
+// =====================
+async function loadEquipment() {
+  const el = document.getElementById('equip-list');
+  el.innerHTML = '<div class="loading">Loading…</div>';
+  const { data } = await sb.from('equipment').select('*, equipment_types(name)').eq('is_active', true).order('unit_number');
+  allEquipment = data || [];
+  renderEquipList(allEquipment);
+}
+
+function renderEquipList(list) {
+  const el = document.getElementById('equip-list');
+  if (!list || list.length === 0) { el.innerHTML = '<div class="empty-state"><p>No equipment found. Add some in Admin.</p></div>'; return; }
+  el.innerHTML = list.map(e => {
+    const alerts = getEquipAlertStatus(e);
+    return `<div class="card-row" onclick="openEquipDetail('${e.id}')">
+      <div class="equip-avatar">${e.unit_number}</div>
+      <div class="equip-info">
+        <div class="equip-unit">${e.unit_number} · ${e.make || ''} ${e.model || ''}</div>
+        <div class="equip-sub">${e.equipment_types?.name || ''} · ${e.location || 'No location'}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:13px;font-weight:600">${e.current_hours || 0} hrs</div>
+        <span class="badge ${alerts.cls}" style="margin-top:4px">${alerts.label}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function searchEquipment(q) {
+  filterEquipment();
+}
+
+async function openEquipDetail(id) {
+  currentEquipId = id;
+  showScreen('equip-detail');
+  const el = document.getElementById('equip-detail-content');
+  el.innerHTML = '<div class="loading">Loading…</div>';
+  const { data: e } = await sb.from('equipment').select('*, equipment_types(name)').eq('id', id).single();
+  const { data: schedules } = await sb.from('maintenance_schedules').select('*, hrs_per_day, days_per_week').eq('equipment_id', id).eq('is_active', true).order('service_type');
+  const { data: wos } = await sb.from('work_orders').select('*, submitted_by:employees!work_orders_submitted_by_id_fkey(name), assigned_to:employees!work_orders_assigned_to_id_fkey(name)').eq('equipment_id', id).eq('is_archived', true).order('completed_at', { ascending: false }).limit(10);
+  const { data: maintEvents } = await sb.from('maintenance_events').select('*, performed_by:employees!maintenance_events_performed_by_id_fkey(name)').eq('equipment_id', id).order('performed_at', { ascending: false }).limit(10);
+  if (!e) { el.innerHTML = '<p>Equipment not found.</p>'; return; }
+  const alerts = getEquipAlertStatus(e, schedules);
+  el.innerHTML = `
+    <div class="detail-header">
+      <div class="detail-title">${e.unit_number}</div>
+      <div class="detail-subtitle">${e.make || ''} ${e.model || ''} · ${e.equipment_types?.name || ''}</div>
+      <div class="detail-badges"><span class="badge ${alerts.cls}">${alerts.label}</span></div>
+    </div>
+    <div class="card" style="margin-bottom:10px">
+      <div class="card-header"><h2>Unit Info</h2></div>
+      <div class="card-body info-list">
+        <div class="info-row"><span class="info-label">Current hours</span><span class="info-value" style="font-size:18px;color:var(--blue)">${e.current_hours || 0} hrs</span></div>
+        <div class="info-row"><span class="info-label">Status</span><span class="info-value">${e.status}</span></div>
+        <div class="info-row"><span class="info-label">Location</span><span class="info-value">${e.location || '—'}</span></div>
+        <div class="info-row"><span class="info-label">Year</span><span class="info-value">${e.year || '—'}</span></div>
+        <div class="info-row"><span class="info-label">Serial #</span><span class="info-value">${e.serial_number || '—'}</span></div>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:10px">
+      <div class="card-header" style="justify-content:space-between">
+        <h2>Update Hours</h2>
+      </div>
+      <div class="card-body">
+        <div class="field-row">
+          <div class="field"><label>New hour reading</label><input type="number" id="new-hours-${id}" placeholder="${e.current_hours || 0}" min="${e.current_hours || 0}"></div>
+          <div class="field" style="display:flex;align-items:flex-end"><button class="btn" onclick="submitHours('${id}')">Update</button></div>
+        </div>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:10px">
+      <div class="card-header" style="justify-content:space-between"><h2>Maintenance Schedule</h2><button style="font-size:13px;color:var(--blue);background:none;border:none;cursor:pointer;font-weight:600" onclick="showAddMaintSchedule('${id}','${e.current_hours || 0}')">+ Add</button></div>
+      <div class="card-body">
+        ${schedules && schedules.length > 0 ? schedules.map(s => renderMaintScheduleItem(s, parseFloat(e.current_hours || 0))).join('') : '<p style="color:var(--text-secondary);font-size:13px">No maintenance schedules. Add one above.</p>'}
+      </div>
+    </div>
+    ${schedules && schedules.length > 0 ? `
+    <div class="card" style="margin-bottom:10px">
+      <div class="card-header"><h2>Log Completed Maintenance</h2></div>
+      <div class="card-body">
+        <div class="field"><label>Service performed</label><select id="log-maint-schedule-${id}">${schedules.map(s => `<option value="${s.id}">${s.service_type}</option>`).join('')}</select></div>
+        <div class="field"><label>Hours at service</label><input type="number" id="log-maint-hours-${id}" value="${e.current_hours || 0}"></div>
+        <div class="field"><label>Notes</label><input type="text" id="log-maint-notes-${id}" placeholder="Optional notes…"></div>
+        <div class="field"><label>Parts used</label><input type="text" id="log-maint-parts-${id}" placeholder="Optional…"></div>
+        <div class="field-row">
+          <div class="field"><label>Total repair cost ($)</label><input type="number" id="log-maint-cost-${id}" placeholder="0.00"></div>
+          <div class="field"><label>Shop / Vendor</label><input type="text" id="log-maint-shop-${id}" placeholder="e.g. ABC Diesel, In-house"></div>
+        </div>
+        <button class="btn" onclick="logMaintenance('${id}')">Log Maintenance</button>
+      </div>
+    </div>` : ''}
+    <div class="card" style="margin-bottom:10px">
+      <div class="card-header"><h2>Log Repair / Maintenance</h2></div>
+      <div class="card-body">
+        <p style="font-size:12px;color:var(--text-secondary);margin-bottom:12px">Log any repair or maintenance event — scheduled service, outside shop visit, or one-off repair.</p>
+        <div class="field"><label>Service / Repair description <span class="required">*</span></label><input type="text" id="free-maint-type-${id}" placeholder="e.g. Oil Change, Brake Repair, Engine Rebuild…"></div>
+        <div class="field"><label>Performed by / Shop</label><input type="text" id="free-maint-shop-${id}" placeholder="e.g. ABC Diesel, In-house, John Smith"></div>
+        <div class="field-row">
+          <div class="field"><label>Hours at service</label><input type="number" id="free-maint-hours-${id}" placeholder="${e.current_hours || 0}" value="${e.current_hours || 0}"></div>
+          <div class="field"><label>Total cost ($)</label><input type="number" id="free-maint-cost-${id}" placeholder="0.00"></div>
+        </div>
+        <div class="field"><label>Parts used</label><input type="text" id="free-maint-parts-${id}" placeholder="Optional…"></div>
+        <div class="field"><label>Notes</label><input type="text" id="free-maint-notes-${id}" placeholder="Optional additional notes…"></div>
+        <button class="btn" onclick="logFreeFormMaintenance('${id}')">Save to Maintenance History</button>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:10px">
+      <div class="card-header"><h2>Work Order History</h2></div>
+      <div class="card-body">
+        ${wos && wos.length > 0 ? wos.map(w => { const total = (parseFloat(w.labor_hours||0) * 0 + parseFloat(w.parts_cost||0)); const hasTotal = w.parts_cost || w.labor_hours; return `<div class="tl-item"><div class="tl-dot green">✓</div><div class="tl-body"><div class="tl-title">${w.work_order_number} · ${w.category}${w.parts_cost ? ' <span style="color:var(--green);font-weight:600">Parts: $' + parseFloat(w.parts_cost).toFixed(2) + '</span>' : ''}</div><div class="tl-sub">${w.description.substring(0,60)}${w.description.length > 60 ? '…' : ''}</div><div class="tl-sub">Completed ${formatDate(w.completed_at)} · ${w.assigned_to?.name || '—'}${w.labor_hours ? ' · ' + w.labor_hours + ' labor hrs' : ''}${w.resolution_notes ? ' · ' + w.resolution_notes.substring(0,40) : ''}</div></div></div>`; }).join('') : '<p style="color:var(--text-secondary);font-size:13px">No completed work orders yet.</p>'}
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:10px">
+      <div class="card-header"><h2>Maintenance History</h2></div>
+      <div class="card-body">
+        ${maintEvents && maintEvents.length > 0 ? maintEvents.map(m => `<div class="tl-item"><div class="tl-dot blue">🔧</div><div class="tl-body"><div class="tl-title">${m.service_type} ${m.cost ? '<span style="background:#eafaf1;color:#27ae60;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">$' + parseFloat(m.cost).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + '</span>' : ''}</div><div class="tl-sub">${formatDate(m.performed_at)} · ${m.hours_at_service} hrs · ${m.performed_by?.name || 'In-house'}${m.notes ? ' · ' + m.notes : ''}${m.parts_used ? ' · ' + m.parts_used : ''}</div></div></div>`).join('') : '<p style="color:var(--text-secondary);font-size:13px">No maintenance events logged yet.</p>'}
+      </div>
+    </div>
+  `;
+}
+
+function renderMaintScheduleItem(s, currentHours) {
+  const remaining = parseFloat(s.next_due_hours || 0) - currentHours;
+  let statusCls, statusLabel, barColor, barPct;
+  if (remaining <= 0) { statusCls = 'badge-red'; statusLabel = `${Math.abs(remaining).toFixed(0)} hrs overdue`; barColor = '#b91c1c'; barPct = 100; }
+  else if (remaining <= parseFloat(s.alert_threshold_hours || 20)) { statusCls = 'badge-amber'; statusLabel = `${remaining.toFixed(0)} hrs left`; barColor = '#e67e22'; barPct = Math.max(10, 100 - (remaining / parseFloat(s.alert_threshold_hours || 20)) * 100); }
+  else { statusCls = 'badge-green'; statusLabel = `${remaining.toFixed(0)} hrs left`; barColor = '#27ae60'; barPct = Math.min(80, ((currentHours - parseFloat(s.last_service_hours || 0)) / parseFloat(s.interval_hours || 1)) * 100); }
+
+  // Predictive date calculation using per-schedule settings
+  const hrsPerDay = parseFloat(s.hrs_per_day || 4);
+  const daysPerWeek = parseFloat(s.days_per_week || 5);
+  const HRS_PER_WEEK = hrsPerDay * daysPerWeek;
+  let predictedLabel = '';
+  if (remaining > 0) {
+    const weeksOut = remaining / HRS_PER_WEEK;
+    const predictedDate = new Date();
+    predictedDate.setDate(predictedDate.getDate() + Math.round(weeksOut * 7));
+    const dateStr = predictedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const daysOut = Math.round(weeksOut * 7);
+    predictedLabel = `<div style="display:flex;align-items:center;gap:6px;margin-top:6px;padding:6px 10px;background:#f0f9ff;border-radius:8px;border:1px solid #bae6fd">
+      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#0369a1" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path stroke-linecap="round" d="M16 2v4M8 2v4M3 10h18"/></svg>
+      <span style="font-size:12px;color:#0369a1;font-weight:600">Predicted service: ${dateStr}</span>
+      <span style="font-size:11px;color:#0ea5e9;margin-left:2px">(~${daysOut} days · ${hrsPerDay}hrs/day · ${daysPerWeek}days/wk)</span>
+    </div>`;
+  } else {
+    predictedLabel = `<div style="display:flex;align-items:center;gap:6px;margin-top:6px;padding:6px 10px;background:#fef2f2;border-radius:8px;border:1px solid #fecaca">
+      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#b91c1c" stroke-width="2"><circle cx="12" cy="12" r="10"/><path stroke-linecap="round" d="M12 8v4M12 16h.01"/></svg>
+      <span style="font-size:12px;color:#b91c1c;font-weight:600">Service overdue — schedule immediately</span>
+    </div>`;
+  }
+
+  return `<div class="maint-item">
+    <div class="maint-top"><span class="maint-name">${s.service_type}</span><span class="badge ${statusCls}">${statusLabel}</span></div>
+    <div class="maint-due">Every ${s.interval_hours} hrs · Due at ${s.next_due_hours} hrs · Last at ${s.last_service_hours || 0} hrs</div>
+    <div class="progress-bar"><div class="progress-fill" style="width:${barPct}%;background:${barColor}"></div></div>
+    ${predictedLabel}
+  </div>`;
+}
+
+async function submitHours(equipId) {
+  const input = document.getElementById('new-hours-' + equipId);
+  const newHours = parseFloat(input?.value);
+  if (!newHours || isNaN(newHours)) { showToast('Please enter valid hours'); return; }
+  const { data: equip } = await sb.from('equipment').select('current_hours').eq('id', equipId).single();
+  if (newHours < parseFloat(equip?.current_hours || 0)) { showToast('Hours cannot go backwards'); return; }
+  await sb.from('hour_readings').insert({ equipment_id: equipId, hours: newHours, submitted_by_id: currentEmployee?.id });
+  await sb.from('equipment').update({ current_hours: newHours, updated_at: new Date().toISOString() }).eq('id', equipId);
+  showToast('Hours updated to ' + newHours);
+  openEquipDetail(equipId);
+}
+
+async function logMaintenance(equipId) {
+  const scheduleId = document.getElementById('log-maint-schedule-' + equipId)?.value;
+  const hours = parseFloat(document.getElementById('log-maint-hours-' + equipId)?.value || 0);
+  const notes = document.getElementById('log-maint-notes-' + equipId)?.value || '';
+  const parts = document.getElementById('log-maint-parts-' + equipId)?.value || '';
+  const totalCost = parseFloat(document.getElementById('log-maint-cost-' + equipId)?.value || 0);
+  const shop = document.getElementById('log-maint-shop-' + equipId)?.value.trim() || '';
+  const fullNotes = [notes, shop ? 'Shop: ' + shop : ''].filter(Boolean).join(' | ');
+  if (!hours) { showToast('Please enter hours at service'); return; }
+  const { data: schedule } = await sb.from('maintenance_schedules').select('*').eq('id', scheduleId).single();
+  if (!schedule) { showToast('Schedule not found'); return; }
+  await sb.from('maintenance_events').insert({ equipment_id: equipId, maintenance_schedule_id: scheduleId, service_type: schedule.service_type, performed_by_id: currentEmployee?.id, hours_at_service: hours, notes: fullNotes, parts_used: parts, cost: totalCost || null });
+  const nextDue = hours + parseFloat(schedule.interval_hours);
+  await sb.from('maintenance_schedules').update({ last_service_hours: hours, next_due_hours: nextDue, updated_at: new Date().toISOString() }).eq('id', scheduleId);
+  showToast('Maintenance logged! Next due: ' + nextDue + ' hrs');
+  openEquipDetail(equipId);
+}
+
+function showAddMaintSchedule(equipId, currentHours) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `<div class="modal">
+    <div class="modal-handle"></div>
+    <h2>Add Maintenance Schedule</h2>
+    <div class="field"><label>Service type</label><input type="text" id="ms-type" placeholder="e.g. Engine Oil & Filter"></div>
+    <div class="field"><label>Interval (hours)</label><input type="number" id="ms-interval" placeholder="e.g. 250"></div>
+    <div class="field"><label>Last service at (hours)</label><input type="number" id="ms-last" placeholder="${currentHours}" value="${currentHours}"></div>
+    <div class="field"><label>Alert when this many hours away</label><input type="number" id="ms-threshold" value="20"></div>
+    <div style="background:#f8fafc;border-radius:8px;padding:12px;margin-top:4px;border:1px solid #e5e7eb">
+      <div style="font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:10px">Predictive Calculator Settings</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="field" style="margin:0"><label>Hours used per day</label><input type="number" id="ms-hrs-day" value="4" min="1" max="24" step="0.5"></div>
+        <div class="field" style="margin:0"><label>Days worked per week</label><input type="number" id="ms-days-week" value="5" min="1" max="7"></div>
+      </div>
+      <div style="font-size:11px;color:#9ca3af;margin-top:8px">Used to predict when service will be due on the calendar.</div>
+    </div>
+    <button class="btn" style="margin-top:14px" onclick="saveNewMaintSchedule('${equipId}')">Add Schedule</button>
+    <button class="btn btn-secondary" style="margin-top:8px" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+  </div>`;
+  document.body.appendChild(overlay);
+}
+
+async function saveNewMaintSchedule(equipId) {
+  const serviceType = document.getElementById('ms-type').value.trim();
+  const interval = parseFloat(document.getElementById('ms-interval').value);
+  const lastHours = parseFloat(document.getElementById('ms-last').value || 0);
+  const threshold = parseFloat(document.getElementById('ms-threshold').value || 20);
+  const hrsPerDay = parseFloat(document.getElementById('ms-hrs-day').value || 4);
+  const daysPerWeek = parseFloat(document.getElementById('ms-days-week').value || 5);
+  if (!serviceType || !interval) { showToast('Please fill in service type and interval'); return; }
+  const nextDue = lastHours + interval;
+  await sb.from('maintenance_schedules').insert({ equipment_id: equipId, service_type: serviceType, interval_hours: interval, alert_threshold_hours: threshold, last_service_hours: lastHours, next_due_hours: nextDue, hrs_per_day: hrsPerDay, days_per_week: daysPerWeek });
+  document.querySelector('.modal-overlay')?.remove();
+  showToast('Schedule added!');
+  openEquipDetail(equipId);
+}
+
+// =====================
+// ALERTS
+// =====================
+async function loadAlerts() {
+  const el = document.getElementById('alerts-list');
+  el.innerHTML = '<div class="loading">Loading…</div>';
+  const { data: schedules } = await sb.from('maintenance_schedules').select('*, equipment(unit_number, make, model, current_hours)').eq('is_active', true);
+  const overdue = [], soon = [];
+  schedules?.forEach(s => {
+    const hrs = parseFloat(s.equipment?.current_hours || 0);
+    const remaining = parseFloat(s.next_due_hours || 0) - hrs;
+    if (remaining <= 0) overdue.push({ ...s, remaining, hrs });
+    else if (remaining <= parseFloat(s.alert_threshold_hours || 20)) soon.push({ ...s, remaining, hrs });
+  });
+  overdue.sort((a,b) => a.remaining - b.remaining);
+  soon.sort((a,b) => a.remaining - b.remaining);
+  if (overdue.length === 0 && soon.length === 0) { el.innerHTML = '<div class="empty-state"><p>No maintenance alerts. Fleet is up to date!</p></div>'; return; }
+  let html = '';
+  if (overdue.length > 0) html += `<div style="padding:10px 16px 4px;font-size:11px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:0.05em">Overdue (${overdue.length})</div>` + overdue.map(s => renderAlertItem(s)).join('');
+  if (soon.length > 0) html += `<div style="padding:10px 16px 4px;font-size:11px;font-weight:700;color:var(--amber);text-transform:uppercase;letter-spacing:0.05em">Due Soon (${soon.length})</div>` + soon.map(s => renderAlertItem(s)).join('');
+  el.innerHTML = html;
+}
+
+function renderAlertItem(s) {
+  const hrs = parseFloat(s.equipment?.current_hours || 0);
+  const remaining = parseFloat(s.next_due_hours || 0) - hrs;
+  const isOverdue = remaining <= 0;
+  const equip = s.equipment ? `${s.equipment.unit_number}` : '—';
+
+  // Predictive date using per-schedule settings
+  const hrsPerDay = parseFloat(s.hrs_per_day || 4);
+  const daysPerWeek = parseFloat(s.days_per_week || 5);
+  const HRS_PER_WEEK = hrsPerDay * daysPerWeek;
+  let predictedStr = '';
+  if (!isOverdue && remaining > 0) {
+    const weeksOut = remaining / HRS_PER_WEEK;
+    const predictedDate = new Date();
+    predictedDate.setDate(predictedDate.getDate() + Math.round(weeksOut * 7));
+    const dateStr = predictedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    predictedStr = ` · Due approx. ${dateStr}`;
+  }
+
+  return `<div class="alert-item">
+    <div class="alert-icon ${isOverdue ? 'overdue' : 'soon'}">
+      <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="${isOverdue ? '#b91c1c' : '#e67e22'}" stroke-width="2"><circle cx="12" cy="12" r="10"/><path stroke-linecap="round" d="M12 6v6l4 2"/></svg>
+    </div>
+    <div class="alert-body">
+      <div class="alert-title">${equip} — ${s.service_type}</div>
+      <div class="alert-sub">${isOverdue ? `${Math.abs(remaining).toFixed(0)} hrs overdue · due at ${s.next_due_hours} hrs` : `${remaining.toFixed(0)} hrs remaining · due at ${s.next_due_hours} hrs`} · now at ${hrs} hrs${predictedStr}</div>
+    </div>
+    <span class="badge ${isOverdue ? 'badge-red' : 'badge-amber'}">${isOverdue ? 'Overdue' : 'Due soon'}</span>
+  </div>`;
+}
+
+// =====================
+// ADMIN
+// =====================
+function adminTab(tab, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('admin-employees').style.display = tab === 'employees' ? 'block' : 'none';
+  document.getElementById('admin-equipment').style.display = tab === 'equipment' ? 'block' : 'none';
+  if (tab === 'employees') loadAdminEmployees();
+}
+
+async function loadAdminEmployees() {
+  const el = document.getElementById('admin-emp-list');
+  el.innerHTML = '<div class="loading">Loading…</div>';
+  const { data } = await sb.from('employees').select('*').eq('is_active', true).order('name');
+  if (!data || data.length === 0) { el.innerHTML = '<div class="empty-state"><p>No employees yet. Add your first employee.</p></div>'; return; }
+  el.innerHTML = data.map(emp => {
+    const isMe = emp.email === currentEmployee?.email;
+    const deleteBtn = isMe ? '<span style="font-size:11px;color:var(--text-secondary);flex-shrink:0">You</span>' : '<button onclick="deleteEmployee(\''+emp.id+'\',\''+emp.name+'\')" style="background:var(--red-light);color:var(--red);border:1px solid var(--red);border-radius:6px;padding:5px 10px;font-size:12px;font-weight:600;cursor:pointer;flex-shrink:0">Remove</button>';
+    return '<div class="card-row" style="display:flex;align-items:center;gap:12px"><div style="width:40px;height:40px;border-radius:50%;background:var(--blue-light);color:var(--blue);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0">'+emp.name.charAt(0)+'</div><div style="flex:1"><div style="font-weight:600;font-size:15px">'+emp.name+'</div><div style="font-size:12px;color:var(--text-secondary)">'+emp.email+'</div></div><span class="badge role-'+emp.role+'">'+emp.role+'</span>'+deleteBtn+'</div>';
+  }).join('');
+}
+
+function showAddEmployee() {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `<div class="modal">
+    <div class="modal-handle"></div>
+    <h2>Add Employee</h2>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">This will create a login account for the employee. They will need to set their password via the email they receive.</p>
+    <div class="field"><label>Full Name</label><input type="text" id="emp-name" placeholder="John Smith"></div>
+    <div class="field"><label>Email Address</label><input type="email" id="emp-email" placeholder="john@company.com"></div>
+    <div class="field"><label>Temporary Password</label><input type="password" id="emp-password" placeholder="Give them a temporary password"></div>
+    <div class="field"><label>Role</label>
+      <select id="emp-role">
+        <option value="mechanic">Mechanic</option>
+        <option value="foreman">Foreman</option>
+        <option value="manager">Manager</option>
+        <option value="admin">Admin</option>
+        <option value="viewer">Viewer</option>
+      </select>
+    </div>
+    <button class="btn" onclick="createEmployee()">Create Account</button>
+    <button class="btn btn-secondary" style="margin-top:8px" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+  </div>`;
+  document.body.appendChild(overlay);
+}
+
+async function deleteEmployee(employeeId, name) {
+  if (!confirm('Remove ' + name + ' from the app? They will no longer be able to log in.')) return;
+  const { error } = await sb.from('employees').update({ is_active: false }).eq('id', employeeId);
+  if (error) { showToast('Error removing employee'); return; }
+  showToast(name + ' has been removed');
+  loadAdminEmployees();
+}
+
+async function createEmployee() {
+  const name = document.getElementById('emp-name').value.trim();
+  const email = document.getElementById('emp-email').value.trim();
+  const password = document.getElementById('emp-password').value;
+  const role = document.getElementById('emp-role').value;
+  if (!name || !email || !password) { showToast('Please fill in all fields'); return; }
+
+  // Check if employee already exists but is inactive
+  const { data: existing } = await sb.from('employees').select('id, is_active').eq('email', email).single();
+  if (existing) {
+    // Reactivate existing employee
+    await sb.from('employees').update({ is_active: true, name, role }).eq('email', email);
+    document.querySelector('.modal-overlay')?.remove();
+    showToast('Employee account reactivated!');
+    loadAdminEmployees();
+    return;
+  }
+
+  // Create new auth user
+  const { data, error } = await sb.auth.signUp({ email, password });
+  if (error) { showToast('Error: ' + error.message); return; }
+  if (data.user) {
+    await sb.from('employees').insert({ auth_user_id: data.user.id, name, email, role });
+  }
+  document.querySelector('.modal-overlay')?.remove();
+  showToast('Employee account created!');
+  loadAdminEmployees();
+}
+
+async function submitEquipment() {
+  const unitNumber = document.getElementById('eq-unit').value.trim();
+  const typeId = document.getElementById('eq-type').value;
+  const make = document.getElementById('eq-make').value.trim();
+  const model = document.getElementById('eq-model').value.trim();
+  const year = document.getElementById('eq-year').value;
+  const hours = document.getElementById('eq-hours').value;
+  const serial = document.getElementById('eq-serial').value.trim();
+  const location = document.getElementById('eq-location').value.trim();
+  if (!unitNumber || !typeId) { showToast('Unit number and type are required'); return; }
+  const { data: equip, error } = await sb.from('equipment').insert({ unit_number: unitNumber, equipment_type_id: typeId, make: make || null, model: model || null, year: year ? parseInt(year) : null, current_hours: hours ? parseFloat(hours) : 0, serial_number: serial || null, location: location || null }).select().single();
+  if (error) { showToast('Error: ' + (error.message.includes('unique') ? 'Unit number already exists' : error.message)); return; }
+  const scheduleRows = document.querySelectorAll('.schedule-row');
+  for (const row of scheduleRows) {
+    const type = row.querySelector('.sr-type').value.trim();
+    const interval = parseFloat(row.querySelector('.sr-interval').value);
+    const threshold = parseFloat(row.querySelector('.sr-threshold').value || 20);
+    if (type && interval) {
+      const lastHrs = parseFloat(hours || 0);
+      await sb.from('maintenance_schedules').insert({ equipment_id: equip.id, service_type: type, interval_hours: interval, alert_threshold_hours: threshold, last_service_hours: lastHrs, next_due_hours: lastHrs + interval });
+    }
+  }
+  showToast('Equipment added!');
+  ['eq-unit','eq-make','eq-model','eq-year','eq-hours','eq-serial','eq-location'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+  document.getElementById('maint-schedule-builder').innerHTML = '';
+  scheduleRowCount = 0;
+  loadEquipmentOptions();
+}
+
+function addScheduleRow() {
+  scheduleRowCount++;
+  const div = document.createElement('div');
+  div.className = 'schedule-row';
+  div.style.cssText = 'background:var(--gray-light);border-radius:8px;padding:12px;margin-bottom:10px';
+  div.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-size:13px;font-weight:600">Service ${scheduleRowCount}</span><button onclick="this.closest('.schedule-row').remove()" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:18px">×</button></div>
+    <div class="field-row">
+      <div class="field"><label style="font-size:12px">Service type</label><input class="sr-type" type="text" placeholder="e.g. Oil Change" style="font-size:14px;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;width:100%"></div>
+      <div class="field"><label style="font-size:12px">Every (hrs)</label><input class="sr-interval" type="number" placeholder="250" style="font-size:14px;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;width:100%"></div>
+    </div>
+    <div class="field"><label style="font-size:12px">Alert when this many hours away</label><input class="sr-threshold" type="number" value="20" style="font-size:14px;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;width:100%"></div>
+  `;
+  document.getElementById('maint-schedule-builder').appendChild(div);
+}
+
+// =====================
+// HELPERS / OPTIONS
+// =====================
+async function loadEquipmentOptions() {
+  const { data } = await sb.from('equipment').select('id, unit_number, make, model').eq('is_active', true).order('unit_number');
+  const sel = document.getElementById('wo-equipment');
+  if (sel) { sel.innerHTML = '<option value="">Select equipment…</option>' + (data || []).map(e => `<option value="${e.id}">${e.unit_number} — ${e.make || ''} ${e.model || ''}</option>`).join(''); }
+}
+
+async function loadMechanicsOptions() {
+  const { data } = await sb.from('employees').select('id, name, role').eq('is_active', true).in('role', ['mechanic','foreman','manager','admin']);
+  const sel = document.getElementById('wo-assign');
+  if (sel) { sel.innerHTML = '<option value="">Unassigned</option>' + (data || []).map(e => `<option value="${e.id}">${e.name} (${e.role})</option>`).join(''); }
+}
+
+async function loadMechanicsIntoSelect(selId, currentId) {
+  const { data } = await sb.from('employees').select('id, name, role').eq('is_active', true).in('role', ['mechanic','foreman','manager','admin']);
+  const sel = document.getElementById(selId);
+  if (sel) { sel.innerHTML = '<option value="">— keep current —</option>' + (data || []).map(e => `<option value="${e.id}" ${e.id === currentId ? 'selected' : ''}>${e.name} (${e.role})</option>`).join(''); }
+}
+
+async function loadEquipmentTypes() {
+  const { data } = await sb.from('equipment_types').select('*').order('name');
+  const sel = document.getElementById('eq-type');
+  if (sel) { sel.innerHTML = '<option value="">Select type…</option>' + (data || []).map(t => `<option value="${t.id}">${t.name}</option>`).join(''); }
+}
+
+function getEquipAlertStatus(e, schedules) {
+  if (!schedules) return { cls: 'badge-gray', label: 'OK' };
+  const hrs = parseFloat(e.current_hours || 0);
+  let hasOverdue = false, hasSoon = false;
+  schedules.forEach(s => {
+    const rem = parseFloat(s.next_due_hours || 0) - hrs;
+    if (rem <= 0) hasOverdue = true;
+    else if (rem <= parseFloat(s.alert_threshold_hours || 20)) hasSoon = true;
+  });
+  if (hasOverdue) return { cls: 'badge-red', label: 'Overdue' };
+  if (hasSoon) return { cls: 'badge-amber', label: 'Due soon' };
+  return { cls: 'badge-green', label: 'OK' };
+}
+
+function renderStatusBadge(status) {
+  const map = { new: 'badge-gray', assigned: 'badge-blue', in_progress: 'badge-blue', waiting_parts: 'badge-amber', completed: 'badge-green', closed: 'badge-gray' };
+  return `<span class="badge ${map[status] || 'badge-gray'}">${formatStatus(status)}</span>`;
+}
+
+function renderPriBadge(priority) {
+  const map = { critical: 'badge-red', high: 'badge-amber', normal: 'badge-blue', low: 'badge-gray' };
+  return `<span class="badge ${map[priority] || 'badge-gray'}">${priority?.charAt(0).toUpperCase() + priority?.slice(1)}</span>`;
+}
+
+function formatStatus(s) {
+  const map = { new: 'New', assigned: 'Assigned', in_progress: 'In Progress', waiting_parts: 'Waiting Parts', completed: 'Completed', closed: 'Closed' };
+  return map[s] || s;
+}
+
+function statusDotColor(s) {
+  const map = { new: '', assigned: 'amber', in_progress: 'blue', waiting_parts: 'amber', completed: 'green', closed: 'green' };
+  return map[s] || '';
+}
+
+function formatDate(d) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function formatDateTime(d) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' · ' + new Date(d).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+</script>
+</body>
+</html>
