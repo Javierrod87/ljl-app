@@ -268,14 +268,12 @@
       <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password">
     </div>
     <button class="btn" onclick="handleLogin()" data-t="Sign In">Sign In</button>
-    <p style="text-align:center;margin-top:16px;font-size:13px;color:#6b7280">
-      <span style="cursor:pointer;color:#b91c1c;font-weight:600" onclick="showForgotPassword()" data-t="Forgot password?">Forgot password?</span>
-    </p>
+    <button onclick="showForgotPassword()" data-t="Forgot password?" style="width:100%;background:none;border:none;color:#b91c1c;font-weight:600;font-size:13px;cursor:pointer;margin-top:12px;padding:10px;text-align:center">Forgot password?</button>
   </div>
 </div>
 
 <!-- FORGOT PASSWORD SCREEN -->
-<div id="forgot-screen" style="display:none;min-height:100vh;align-items:center;justify-content:center;background:linear-gradient(160deg,#1c1c1c 0%,#2d0a0a 50%,#7f1d1d 100%);padding:24px">
+<div id="forgot-screen" style="display:none;min-height:100vh;align-items:center;justify-content:center;background:linear-gradient(160deg,#1c1c1c 0%,#2d0a0a 50%,#7f1d1d 100%);padding:24px;position:relative;z-index:10">
   <div class="auth-card">
     <div class="auth-logo">
       <div class="logo-icon">
@@ -298,7 +296,7 @@
 </div>
 
 <!-- PASSWORD RESET SCREEN -->
-<div id="reset-screen" style="display:none;min-height:100vh;align-items:center;justify-content:center;background:linear-gradient(160deg,#1c1c1c 0%,#2d0a0a 50%,#7f1d1d 100%);padding:24px">
+<div id="reset-screen" style="display:none;min-height:100vh;align-items:center;justify-content:center;background:linear-gradient(160deg,#1c1c1c 0%,#2d0a0a 50%,#7f1d1d 100%);padding:24px;position:relative;z-index:10">
   <div class="auth-card">
     <div class="auth-logo">
       <div class="logo-icon">
@@ -1089,5 +1087,4 @@ function toggleLanguage() {
 function applyTranslations() {
   document.querySelectorAll('[data-t]').forEach(el => {
     const key = el.getAttribute('data-t');
-    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-      el.placeholder = 
+    if (el.ta
