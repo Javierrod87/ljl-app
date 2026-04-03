@@ -838,6 +838,23 @@ async function sendTestAlertEmail() {
   btn.disabled = false;
 }
 
+async function deleteWorkOrder(woId, woNumber) {
+  if (!confirm('Delete ' + woNumber + '? This cannot be undone.')) return;
+  
+  // Delete attachments first
+  await sb.from('work_order_attachments').delete().eq('work_order_id', woId);
+  // Delete status history
+  await sb.from('work_order_status_history').delete().eq('work_order_id', woId);
+  // Delete work order
+  const { error } = await sb.from('work_orders').delete().eq('id', woId);
+  
+  if (error) { showToast('Error deleting work order: ' + error.message); return; }
+  
+  showToast(woNumber + ' deleted successfully');
+  showScreen('workorders');
+  loadWorkOrders();
+}
+
 async function deleteEquipment(equipId, unitNumber) {
   if (!confirm('Delete ' + unitNumber + '? This will permanently remove the equipment and all its maintenance schedules. Work order history will be preserved.')) return;
 
@@ -1454,6 +1471,11 @@ async function openWODetail(id) {
     ${w.status === 'completed' && currentEmployee?.role && ['admin','manager','foreman','mechanic'].includes(currentEmployee.role) ? `
     <button class="btn" style="margin-bottom:10px" onclick="closeWO('${w.id}')">Close Work Order (Archive)</button>
     ` : ''}
+    ${currentEmployee?.role && ['admin','manager'].includes(currentEmployee.role) && !['closed'].includes(w.status) ? `
+    <div style="margin-top:8px;padding:14px;background:white;border-radius:12px;border:1px solid #fca5a5">
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">Permanently delete this work order.</p>
+      <button onclick="deleteWorkOrder('${w.id}','${w.work_order_number}')" style="background:#b91c1c;color:white;border:none;border-radius:8px;padding:10px 16px;font-size:13px;font-weight:600;cursor:pointer;width:100%">🗑 Delete Work Order</button>
+    </div>` : ''}
     <div class="card" style="margin-bottom:10px">
       <div class="card-header"><h2>Status History</h2></div>
       <div class="card-body">
@@ -2143,37 +2165,4 @@ function renderStatusBadge(status) {
   return `<span class="badge ${map[status] || 'badge-gray'}">${formatStatus(status)}</span>`;
 }
 
-function renderPriBadge(priority) {
-  const map = { critical: 'badge-red', high: 'badge-amber', normal: 'badge-blue', low: 'badge-gray' };
-  return `<span class="badge ${map[priority] || 'badge-gray'}">${priority?.charAt(0).toUpperCase() + priority?.slice(1)}</span>`;
-}
-
-function formatStatus(s) {
-  const map = { new: 'New', assigned: 'Assigned', in_progress: 'In Progress', waiting_parts: 'Waiting Parts', completed: 'Completed', closed: 'Closed' };
-  return map[s] || s;
-}
-
-function statusDotColor(s) {
-  const map = { new: '', assigned: 'amber', in_progress: 'blue', waiting_parts: 'amber', completed: 'green', closed: 'green' };
-  return map[s] || '';
-}
-
-function formatDate(d) {
-  if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
-function formatDateTime(d) {
-  if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' · ' + new Date(d).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-}
-
-function showToast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 3000);
-}
-</script>
-</body>
-</html>
+funct
