@@ -838,6 +838,25 @@ async function sendTestAlertEmail() {
   btn.disabled = false;
 }
 
+async function deleteEquipment(equipId, unitNumber) {
+  if (!confirm('Delete ' + unitNumber + '? This will permanently remove the equipment and all its maintenance schedules. Work order history will be preserved.')) return;
+
+  // Set as inactive first (soft delete)
+  const { error } = await sb.from('equipment').update({ 
+    is_active: false, 
+    status: 'retired',
+    updated_at: new Date().toISOString() 
+  }).eq('id', equipId);
+
+  if (error) { showToast('Error deleting equipment: ' + error.message); return; }
+  
+  // Also deactivate maintenance schedules
+  await sb.from('maintenance_schedules').update({ is_active: false }).eq('equipment_id', equipId);
+  
+  showToast(unitNumber + ' has been removed from the fleet');
+  showScreen('equipment');
+}
+
 function openWOFromEquip(woId) {
   currentWOId = woId;
   // Change back button to go back to equipment detail
@@ -1649,6 +1668,7 @@ async function openEquipDetail(id) {
       <div class="detail-title">${e.unit_number}</div>
       <div class="detail-subtitle">${e.make || ''} ${e.model || ''} · ${e.equipment_types?.name || ''}</div>
       <div class="detail-badges"><span class="badge ${alerts.cls}">${alerts.label}</span></div>
+
     </div>
     <div class="card" style="margin-bottom:10px">
       <div class="card-header"><h2>Unit Info</h2></div>
@@ -1719,6 +1739,12 @@ async function openEquipDetail(id) {
         ${maintEvents && maintEvents.length > 0 ? maintEvents.map(m => `<div class="tl-item"><div class="tl-dot blue">🔧</div><div class="tl-body"><div class="tl-title">${m.service_type} ${m.cost ? '<span style="background:#eafaf1;color:#27ae60;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">$' + parseFloat(m.cost).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + '</span>' : ''}</div><div class="tl-sub">${formatDate(m.performed_at)} · ${m.hours_at_service} hrs · ${m.performed_by?.name || 'In-house'}${m.notes ? ' · ' + m.notes : ''}${m.parts_used ? ' · ' + m.parts_used : ''}</div></div></div>`).join('') : '<p style="color:var(--text-secondary);font-size:13px">No maintenance events logged yet.</p>'}
       </div>
     </div>
+    ${currentEmployee && ['admin','manager'].includes(currentEmployee.role) ? `
+    <div style="margin-top:16px;background:white;border-radius:12px;border:1px solid #fca5a5;padding:16px">
+      <h3 style="color:var(--red);margin-bottom:6px;font-size:15px">Danger Zone</h3>
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Permanently remove this equipment from the fleet. Work order history will be preserved.</p>
+      <button onclick="deleteEquipment('${e.id}','${e.unit_number}')" style="background:#b91c1c;color:white;border:none;border-radius:8px;padding:12px 16px;font-size:14px;font-weight:600;cursor:pointer;width:100%">🗑 Delete Equipment</button>
+    </div>` : ''}
   `;
 }
 
