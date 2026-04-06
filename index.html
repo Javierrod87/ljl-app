@@ -263,19 +263,17 @@
       <p>Sign in to your account</p>
     </div>
     <div class="auth-error" id="auth-error" style="display:none"></div>
-    <div>
     <div class="form-group">
       <label>Email address</label>
-      <input type="email" id="login-email" placeholder="you@company.com" autocomplete="email" style="font-size:16px">
+      <input type="email" id="login-email" placeholder="you@ljlconstruct.com" autocomplete="email" style="font-size:16px" inputmode="email">
     </div>
     <div class="form-group">
       <label>Password</label>
       <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password" style="font-size:16px">
     </div>
-    <a href="javascript:void(0)" id="login-link" style="display:block;width:100%;padding:14px;background:#b91c1c;color:white;border-radius:10px;font-size:16px;font-weight:600;text-align:center;text-decoration:none;box-sizing:border-box;margin-top:8px">Sign In</a>
-    </div>
-    <div style="text-align:center;margin-top:16px">
-      <a href="javascript:void(0)" id="forgot-link" style="color:#b91c1c;font-weight:600;font-size:13px;text-decoration:none;display:inline-block;padding:10px 20px;-webkit-tap-highlight-color:transparent">Forgot password?</a>
+    <button type="button" onclick="handleLogin()" style="display:block;width:100%;padding:16px;background:#b91c1c;color:white;border-radius:10px;font-size:17px;font-weight:700;text-align:center;border:none;cursor:pointer;margin-top:12px;-webkit-appearance:none;appearance:none;touch-action:manipulation;user-select:none;-webkit-user-select:none">Sign In</button>
+    <div style="text-align:center;margin-top:14px">
+      <button type="button" onclick="showForgotPassword()" style="color:#b91c1c;font-weight:600;font-size:14px;background:none;border:none;cursor:pointer;padding:8px 20px;-webkit-appearance:none;touch-action:manipulation">Forgot password?</button>
     </div>
   </div>
 </div>
@@ -291,15 +289,15 @@
       <p>Enter your email to receive a reset link</p>
     </div>
     <div class="auth-error" id="forgot-error" style="display:none"></div>
-    <div id="forgot-success" style="background:#eafaf1;color:#27ae60;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px;display:none">
-      Password reset email sent! Check your inbox.
-    </div>
+    <div id="forgot-success" style="background:#eafaf1;color:#27ae60;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px;display:none">Password reset email sent! Check your inbox.</div>
     <div class="form-group">
       <label>Email address</label>
-      <input type="email" id="forgot-email" placeholder="you@company.com" style="font-size:16px">
+      <input type="email" id="forgot-email" placeholder="you@ljlconstruct.com" style="font-size:16px" inputmode="email">
     </div>
-    <a href="javascript:void(0)" id="reset-link" style="display:block;width:100%;padding:14px;background:#b91c1c;color:white;border-radius:10px;font-size:16px;font-weight:600;text-align:center;text-decoration:none;box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin-top:8px">Send Reset Link</a>
-    <a href="javascript:void(0)" id="back-link" style="display:block;width:100%;padding:14px;background:white;color:#b91c1c;border:1.5px solid #b91c1c;border-radius:10px;font-size:16px;font-weight:600;text-align:center;text-decoration:none;box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin-top:8px">Back to Sign In</a>
+    <button type="button" onclick="handleForgotPassword()" style="display:block;width:100%;padding:16px;background:#b91c1c;color:white;border-radius:10px;font-size:17px;font-weight:700;text-align:center;border:none;cursor:pointer;margin-top:12px;-webkit-appearance:none;touch-action:manipulation">Send Reset Link</button>
+    <div style="text-align:center;margin-top:10px">
+      <button type="button" onclick="showLogin()" style="color:#b91c1c;font-weight:600;font-size:14px;background:none;border:none;cursor:pointer;padding:8px 20px;-webkit-appearance:none;touch-action:manipulation">Back to Sign In</button>
+    </div>
   </div>
 </div>
 
@@ -314,9 +312,7 @@
       <p>Enter your new password below</p>
     </div>
     <div class="auth-error" id="reset-error" style="display:none"></div>
-    <div id="reset-success" style="background:#eafaf1;color:#27ae60;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px;display:none">
-      Password updated! Logging you out in 3 seconds…
-    </div>
+    <div id="reset-success" style="background:#eafaf1;color:#27ae60;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px;display:none">Password updated! Logging you out…</div>
     <div class="form-group">
       <label>New password</label>
       <input type="password" id="reset-password" placeholder="Enter new password" style="font-size:16px">
@@ -325,7 +321,7 @@
       <label>Confirm password</label>
       <input type="password" id="reset-password-confirm" placeholder="Confirm new password" style="font-size:16px">
     </div>
-    <a href="javascript:void(0)" id="set-pw-link" style="display:block;width:100%;padding:14px;background:#b91c1c;color:white;border-radius:10px;font-size:16px;font-weight:600;text-align:center;text-decoration:none;box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin-top:8px">Set New Password</a>
+    <button type="button" onclick="handlePasswordReset()" style="display:block;width:100%;padding:16px;background:#b91c1c;color:white;border-radius:10px;font-size:17px;font-weight:700;text-align:center;border:none;cursor:pointer;margin-top:12px;-webkit-appearance:none;touch-action:manipulation">Set New Password</button>
   </div>
 </div>
 
@@ -640,22 +636,7 @@ let equipTypeFilter = 'all';
 // AUTH — anchor tags with window.load for maximum iOS compatibility
 // =====================
 
-window.addEventListener('load', function() {
-  var loginLink = document.getElementById('login-link');
-  var forgotLink = document.getElementById('forgot-link');
-  var resetLink = document.getElementById('reset-link');
-  var backLink = document.getElementById('back-link');
-  var setPwLink = document.getElementById('set-pw-link');
-  if (loginLink) loginLink.addEventListener('click', handleLogin);
-  if (forgotLink) forgotLink.addEventListener('click', showForgotPassword);
-  if (resetLink) resetLink.addEventListener('click', handleForgotPassword);
-  if (backLink) backLink.addEventListener('click', showLogin);
-  if (setPwLink) setPwLink.addEventListener('click', handlePasswordReset);
-  var pwField = document.getElementById('login-password');
-  if (pwField) pwField.addEventListener('keyup', function(e) {
-    if (e.key === 'Enter' || e.keyCode === 13) handleLogin();
-  });
-});
+// Auth uses direct onclick attributes for maximum Safari compatibility
 
 function showForgotPassword() {
   document.getElementById('auth-screen').style.display = 'none';
@@ -2260,4 +2241,20 @@ async function createEmployee() {
     return;
   }
 
-  
+  // Create new auth user
+  const { data, error } = await sb.auth.signUp({ email, password });
+  if (error) { showToast('Error: ' + error.message); return; }
+  if (data.user) {
+    await sb.from('employees').insert({ auth_user_id: data.user.id, name, email, role });
+  }
+  document.querySelector('.modal-overlay')?.remove();
+  showToast('Employee account created!');
+  loadAdminEmployees();
+}
+
+async function submitEquipment() {
+  const unitNumber = document.getElementById('eq-unit').value.trim();
+  const typeId = document.getElementById('eq-type').value;
+  const make = document.getElementById('eq-make').value.trim();
+  const model = document.getElementById('eq-model').value.trim();
+  const year = document.getElement
