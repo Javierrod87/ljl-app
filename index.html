@@ -1919,7 +1919,7 @@ function renderAlertItem(s) {
     predictedStr = ` · Due approx. ${dateStr}`;
   }
 
-  return `<div class="alert-item">
+  return `<div class="alert-item" onclick="openAlertDetail('${s.id}','${s.equipment_id}')" style="cursor:pointer">
     <div class="alert-icon ${isOverdue ? 'overdue' : 'soon'}">
       <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="${isOverdue ? '#b91c1c' : '#e67e22'}" stroke-width="2"><circle cx="12" cy="12" r="10"/><path stroke-linecap="round" d="M12 6v6l4 2"/></svg>
     </div>
@@ -1929,6 +1929,89 @@ function renderAlertItem(s) {
     </div>
     <span class="badge ${isOverdue ? 'badge-red' : 'badge-amber'}">${isOverdue ? 'Overdue' : 'Due soon'}</span>
   </div>`;
+}
+
+// =====================
+// ALERT DETAIL MODAL
+// =====================
+async function openAlertDetail(scheduleId, equipmentId) {
+  const { data: s } = await sb.from('maintenance_schedules')
+    .select('*, equipment(id, unit_number, make, model, current_hours)')
+    .eq('id', scheduleId).single();
+  if (!s) return;
+
+  const hrs = parseFloat(s.equipment?.current_hours || 0);
+  const remaining = parseFloat(s.next_due_hours || 0) - hrs;
+  const isOverdue = remaining <= 0;
+  const equip = s.equipment ? `${s.equipment.unit_number} — ${s.equipment.make || ''} ${s.equipment.model || ''}`.trim() : '—';
+
+  const hrsPerDay = parseFloat(s.hrs_per_day || 4);
+  const daysPerWeek = parseFloat(s.days_per_week || 5);
+  let predictedStr = '';
+  if (!isOverdue && remaining > 0) {
+    const weeksOut = remaining / (hrsPerDay * daysPerWeek);
+    const predictedDate = new Date();
+    predictedDate.setDate(predictedDate.getDate() + Math.round(weeksOut * 7));
+    predictedStr = predictedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  const canManage = currentEmployee && ['admin','manager'].includes(currentEmployee.role);
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `<div class="modal">
+    <div class="modal-handle"></div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+      <div class="alert-icon ${isOverdue ? 'overdue' : 'soon'}" style="flex-shrink:0">
+        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="${isOverdue ? '#b91c1c' : '#e67e22'}" stroke-width="2"><circle cx="12" cy="12" r="10"/><path stroke-linecap="round" d="M12 6v6l4 2"/></svg>
+      </div>
+      <div>
+        <div style="font-weight:700;font-size:16px">${s.service_type}</div>
+        <div style="font-size:13px;color:var(--text-secondary)">${equip}</div>
+      </div>
+    </div>
+    <div class="card-body" style="background:var(--gray-light);border-radius:10px;margin-bottom:16px">
+      <div class="info-row"><span class="info-label">Status</span><span class="badge ${isOverdue ? 'badge-red' : 'badge-amber'}">${isOverdue ? `${Math.abs(remaining).toFixed(0)} hrs overdue` : `${remaining.toFixed(0)} hrs remaining`}</span></div>
+      <div class="info-row"><span class="info-label">Due at</span><span class="info-value">${s.next_due_hours} hrs</span></div>
+      <div class="info-row"><span class="info-label">Current hours</span><span class="info-value">${hrs} hrs</span></div>
+      <div class="info-row"><span class="info-label">Interval</span><span class="info-value">Every ${s.interval_hours} hrs</span></div>
+      ${predictedStr ? `<div class="info-row"><span class="info-label">Predicted due</span><span class="info-value">${predictedStr}</span></div>` : ''}
+    </div>
+    <button class="btn" onclick="openEquipDetail('${s.equipment_id}'); document.querySelector('.modal-overlay').remove(); showScreen('equip-detail');" style="margin-bottom:8px">View Equipment</button>
+    ${canManage ? `
+    <button class="btn" style="background:var(--green);margin-bottom:8px" onclick="markAlertComplete('${s.id}',${hrs}, this.closest('.modal-overlay'))">✓ Mark Complete (Reset Interval)</button>
+    <button onclick="deleteAlert('${s.id}', this.closest('.modal-overlay'))" style="width:100%;background:var(--red-light);color:var(--red);border:1px solid var(--red);border-radius:10px;padding:12px;font-size:14px;font-weight:600;cursor:pointer">🗑 Delete This Schedule</button>
+    ` : ''}
+    <button class="btn btn-secondary" style="margin-top:8px" onclick="this.closest('.modal-overlay').remove()">Close</button>
+  </div>`;
+  document.body.appendChild(overlay);
+}
+
+async function markAlertComplete(scheduleId, currentHours, overlay) {
+  const { data: s } = await sb.from('maintenance_schedules').select('*').eq('id', scheduleId).single();
+  if (!s) return;
+
+  const nextDue = currentHours + parseFloat(s.interval_hours);
+  const { error } = await sb.from('maintenance_schedules').update({
+    last_performed_hours: currentHours,
+    next_due_hours: nextDue,
+    updated_at: new Date().toISOString()
+  }).eq('id', scheduleId);
+
+  if (error) { showToast('Error: ' + error.message); return; }
+
+  if (overlay) overlay.remove();
+  showToast('Maintenance marked complete! Next due at ' + nextDue + ' hrs');
+  loadAlerts();
+}
+
+async function deleteAlert(scheduleId, overlay) {
+  if (!confirm('Delete this maintenance schedule? This cannot be undone.')) return;
+  const { error } = await sb.from('maintenance_schedules').delete().eq('id', scheduleId);
+  if (error) { showToast('Error: ' + error.message); return; }
+  if (overlay) overlay.remove();
+  showToast('Maintenance schedule deleted');
+  loadAlerts();
 }
 
 // =====================
@@ -2088,81 +2171,4 @@ async function submitEquipment() {
   if (error) { showToast('Error: ' + (error.message.includes('unique') ? 'Unit number already exists' : error.message)); return; }
   const scheduleRows = document.querySelectorAll('.schedule-row');
   for (const row of scheduleRows) {
-    const type = row.querySelector('.sr-type').value.trim();
-    const interval = parseFloat(row.querySelector('.sr-interval').value);
-    const threshold = parseFloat(row.querySelector('.sr-threshold').value || 20);
-    if (type && interval) {
-      const lastHrs = parseFloat(hours || 0);
-      await sb.from('maintenance_schedules').insert({ equipment_id: equip.id, service_type: type, interval_hours: interval, alert_threshold_hours: threshold, last_service_hours: lastHrs, next_due_hours: lastHrs + interval });
-    }
-  }
-  showToast('Equipment added!');
-  ['eq-unit','eq-make','eq-model','eq-year','eq-hours','eq-serial','eq-location'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
-  document.getElementById('maint-schedule-builder').innerHTML = '';
-  scheduleRowCount = 0;
-  loadEquipmentOptions();
-}
-
-function addScheduleRow() {
-  scheduleRowCount++;
-  const div = document.createElement('div');
-  div.className = 'schedule-row';
-  div.style.cssText = 'background:var(--gray-light);border-radius:8px;padding:12px;margin-bottom:10px';
-  div.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-size:13px;font-weight:600">Service ${scheduleRowCount}</span><button onclick="this.closest('.schedule-row').remove()" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:18px">×</button></div>
-    <div class="field-row">
-      <div class="field"><label style="font-size:12px">Service type</label><input class="sr-type" type="text" placeholder="e.g. Oil Change" style="font-size:14px;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;width:100%"></div>
-      <div class="field"><label style="font-size:12px">Every (hrs)</label><input class="sr-interval" type="number" placeholder="250" style="font-size:14px;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;width:100%"></div>
-    </div>
-    <div class="field"><label style="font-size:12px">Alert when this many hours away</label><input class="sr-threshold" type="number" value="20" style="font-size:14px;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;width:100%"></div>
-  `;
-  document.getElementById('maint-schedule-builder').appendChild(div);
-}
-
-// =====================
-// HELPERS / OPTIONS
-// =====================
-async function loadEquipmentOptions() {
-  const { data } = await sb.from('equipment').select('id, unit_number, make, model').eq('is_active', true).order('unit_number');
-  const sel = document.getElementById('wo-equipment');
-  if (sel) { sel.innerHTML = '<option value="">Select equipment…</option>' + (data || []).map(e => `<option value="${e.id}">${e.unit_number} — ${e.make || ''} ${e.model || ''}</option>`).join(''); }
-}
-
-async function loadMechanicsOptions() {
-  const { data } = await sb.from('employees').select('id, name, role').eq('is_active', true).in('role', ['mechanic','foreman','manager','admin']);
-  const sel = document.getElementById('wo-assign');
-  if (sel) { sel.innerHTML = '<option value="">Unassigned</option>' + (data || []).map(e => `<option value="${e.id}">${e.name} (${e.role})</option>`).join(''); }
-}
-
-async function loadMechanicsIntoSelect(selId, currentId) {
-  const { data } = await sb.from('employees').select('id, name, role').eq('is_active', true).in('role', ['mechanic','foreman','manager','admin']);
-  const sel = document.getElementById(selId);
-  if (sel) { sel.innerHTML = '<option value="">— keep current —</option>' + (data || []).map(e => `<option value="${e.id}" ${e.id === currentId ? 'selected' : ''}>${e.name} (${e.role})</option>`).join(''); }
-}
-
-async function loadEquipmentTypes() {
-  const { data } = await sb.from('equipment_types').select('*').order('name');
-  const sel = document.getElementById('eq-type');
-  if (sel) { sel.innerHTML = '<option value="">Select type…</option>' + (data || []).map(t => `<option value="${t.id}">${t.name}</option>`).join(''); }
-}
-
-function getEquipAlertStatus(e, schedules) {
-  if (!schedules) return { cls: 'badge-gray', label: 'OK' };
-  const hrs = parseFloat(e.current_hours || 0);
-  let hasOverdue = false, hasSoon = false;
-  schedules.forEach(s => {
-    const rem = parseFloat(s.next_due_hours || 0) - hrs;
-    if (rem <= 0) hasOverdue = true;
-    else if (rem <= parseFloat(s.alert_threshold_hours || 20)) hasSoon = true;
-  });
-  if (hasOverdue) return { cls: 'badge-red', label: 'Overdue' };
-  if (hasSoon) return { cls: 'badge-amber', label: 'Due soon' };
-  return { cls: 'badge-green', label: 'OK' };
-}
-
-function renderStatusBadge(status) {
-  const map = { new: 'badge-gray', assigned: 'badge-blue', in_progress: 'badge-blue', waiting_parts: 'badge-amber', completed: 'badge-green', closed: 'badge-gray' };
-  return `<span class="badge ${map[status] || 'badge-gray'}">${formatStatus(status)}</span>`;
-}
-
-funct
+    const type = row.querySelector('.sr-type').
