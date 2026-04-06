@@ -850,6 +850,31 @@ async function deleteWorkOrder(woId, woNumber) {
   loadWorkOrders();
 }
 
+async function updateEquipCategory(equipId) {
+  const select = document.getElementById('equip-category-select');
+  if (!select) return;
+  const typeId = select.value;
+  const typeName = select.options[select.selectedIndex].text;
+  if (!typeId) return;
+  const { error } = await sb.from('equipment').update({ 
+    equipment_type_id: typeId,
+    updated_at: new Date().toISOString()
+  }).eq('id', equipId);
+  if (error) { showToast('Error updating category: ' + error.message); return; }
+  showToast('Category updated to ' + typeName);
+  openEquipDetail(equipId);
+}
+
+async function loadEquipCategoryDropdown(currentTypeId) {
+  const select = document.getElementById('equip-category-select');
+  if (!select) return;
+  const { data: types } = await sb.from('equipment_types').select('*').order('name');
+  if (!types) return;
+  select.innerHTML = types.map(t => 
+    `<option value="${t.id}" ${t.id === currentTypeId ? 'selected' : ''}>${t.name}</option>`
+  ).join('');
+}
+
 async function deleteEquipment(equipId, unitNumber) {
   if (!confirm('Delete ' + unitNumber + '? This will permanently remove the equipment and all its maintenance schedules. Work order history will be preserved.')) return;
 
@@ -2248,32 +2273,4 @@ function renderPriBadge(priority) {
   return `<span class="badge ${map[priority] || 'badge-gray'}">${priority?.charAt(0).toUpperCase() + priority?.slice(1)}</span>`;
 }
 
-function formatStatus(s) {
-  const map = { new: 'New', assigned: 'Assigned', in_progress: 'In Progress', waiting_parts: 'Waiting Parts', completed: 'Completed', closed: 'Closed' };
-  return map[s] || s;
-}
-
-function statusDotColor(s) {
-  const map = { new: '', assigned: 'amber', in_progress: 'blue', waiting_parts: 'amber', completed: 'green', closed: 'green' };
-  return map[s] || '';
-}
-
-function formatDate(d) {
-  if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
-function formatDateTime(d) {
-  if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' · ' + new Date(d).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-}
-
-function showToast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 3000);
-}
-</script>
-</body>
-</html>
+function
