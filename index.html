@@ -850,6 +850,34 @@ async function deleteWorkOrder(woId, woNumber) {
   loadWorkOrders();
 }
 
+async function uploadEquipPhoto(equipId, input) {
+  const file = input.files[0];
+  if (!file) return;
+  
+  showToast('Uploading photo…');
+  
+  const fileExt = file.name.split('.').pop();
+  const fileName = equipId + '.' + fileExt;
+  
+  const { error: uploadError } = await sb.storage
+    .from('equipment-photos')
+    .upload(fileName, file, { upsert: true });
+  
+  if (uploadError) { showToast('Upload error: ' + uploadError.message); return; }
+  
+  const { data: urlData } = sb.storage.from('equipment-photos').getPublicUrl(fileName);
+  
+  const { error: dbError } = await sb.from('equipment').update({ 
+    photo_url: urlData.publicUrl,
+    updated_at: new Date().toISOString()
+  }).eq('id', equipId);
+  
+  if (dbError) { showToast('Error saving photo: ' + dbError.message); return; }
+  
+  showToast('Photo uploaded!');
+  openEquipDetail(equipId);
+}
+
 async function saveEquipInfo(equipId) {
   const status = document.getElementById('edit-status')?.value;
   const location = document.getElementById('edit-location')?.value.trim();
@@ -1731,6 +1759,7 @@ async function openEquipDetail(id) {
   const alerts = getEquipAlertStatus(e, schedules);
   el.innerHTML = `
     <div class="detail-header">
+      ${e.photo_url ? `<img src="${e.photo_url}" style="width:100%;height:160px;object-fit:cover;border-radius:8px;margin-bottom:12px;border:1px solid var(--border)">` : ''}
       <div class="detail-title">${e.unit_number}</div>
       <div class="detail-subtitle">${e.make || ''} ${e.model || ''} · ${e.equipment_types?.name || ''}</div>
       <div class="detail-badges"><span class="badge ${alerts.cls}">${alerts.label}</span></div>
@@ -1754,6 +1783,14 @@ async function openEquipDetail(id) {
         <div class="info-row"><span class="info-label">Serial #</span><input id="edit-serial" value="${e.serial_number || ''}" placeholder="Serial number" style="border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:13px;text-align:right;width:160px"></div>
         <div class="info-row"><span class="info-label">Make</span><input id="edit-make" value="${e.make || ''}" placeholder="Make" style="border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:13px;text-align:right;width:120px"></div>
         <div class="info-row"><span class="info-label">Model</span><input id="edit-model" value="${e.model || ''}" placeholder="Model" style="border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:13px;text-align:right;width:120px"></div>
+        <div style="margin-top:12px">
+          <label style="font-size:13px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:6px">Equipment Photo</label>
+          ${e.photo_url ? `<img src="${e.photo_url}" style="width:100%;max-height:200px;object-fit:cover;border-radius:8px;border:1px solid var(--border);margin-bottom:8px">` : ''}
+          <input type="file" id="equip-photo-input" accept="image/*" capture="environment" style="display:none" onchange="uploadEquipPhoto('${e.id}', this)">
+          <button onclick="document.getElementById('equip-photo-input').click()" style="width:100%;padding:10px;background:var(--gray-light);color:var(--text);border:1px dashed var(--border);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">
+            📷 ${e.photo_url ? 'Change Photo' : 'Add Photo'}
+          </button>
+        </div>
         <button onclick="saveEquipInfo('${e.id}')" style="margin-top:12px;width:100%;padding:10px;background:var(--blue);color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Save Changes</button>
         ` : `
         <div class="info-row"><span class="info-label">Current hours</span><span class="info-value" style="font-size:18px;color:var(--blue)">${e.current_hours || 0} hrs</span></div>
@@ -2226,31 +2263,4 @@ async function createEmployee() {
   // Create new auth user
   const { data, error } = await sb.auth.signUp({ email, password });
   if (error) { showToast('Error: ' + error.message); return; }
-  if (data.user) {
-    await sb.from('employees').insert({ auth_user_id: data.user.id, name, email, role });
-  }
-  document.querySelector('.modal-overlay')?.remove();
-  showToast('Employee account created!');
-  loadAdminEmployees();
-}
-
-async function submitEquipment() {
-  const unitNumber = document.getElementById('eq-unit').value.trim();
-  const typeId = document.getElementById('eq-type').value;
-  const make = document.getElementById('eq-make').value.trim();
-  const model = document.getElementById('eq-model').value.trim();
-  const year = document.getElementById('eq-year').value;
-  const hours = document.getElementById('eq-hours').value;
-  const serial = document.getElementById('eq-serial').value.trim();
-  const location = document.getElementById('eq-location').value.trim();
-  if (!unitNumber || !typeId) { showToast('Unit number and type are required'); return; }
-  const { data: equip, error } = await sb.from('equipment').insert({ unit_number: unitNumber, equipment_type_id: typeId, make: make || null, model: model || null, year: year ? parseInt(year) : null, current_hours: hours ? parseFloat(hours) : 0, serial_number: serial || null, location: location || null }).select().single();
-  if (error) { showToast('Error: ' + (error.message.includes('unique') ? 'Unit number already exists' : error.message)); return; }
-  const scheduleRows = document.querySelectorAll('.schedule-row');
-  for (const row of scheduleRows) {
-    const type = row.querySelector('.sr-type').value.trim();
-    const interval = parseFloat(row.querySelector('.sr-interval').value);
-    const threshold = parseFloat(row.querySelector('.sr-threshold').value || 20);
-    if (type && interval) {
-      const lastHrs = parseFloat(hours || 0);
-      await sb.from('maintenance_schedules').insert({ equipment_id: equip.id, service_type: type, interval_hours: interval, alert_threshold_hours: threshold, last_service_hours: lastHrs, ne
+  if (data.user) 
