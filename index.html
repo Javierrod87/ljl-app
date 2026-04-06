@@ -1718,7 +1718,7 @@ function resetCreateWOForm() {
 async function loadEquipment() {
   const el = document.getElementById('equip-list');
   el.innerHTML = '<div class="loading">Loading…</div>';
-  const { data } = await sb.from('equipment').select('*, equipment_types(name)').eq('is_active', true).order('unit_number');
+  const { data } = await sb.from('equipment').select('*, equipment_types(name), photo_url').eq('is_active', true).order('unit_number');
   allEquipment = data || [];
   renderEquipList(allEquipment);
 }
@@ -1729,7 +1729,7 @@ function renderEquipList(list) {
   el.innerHTML = list.map(e => {
     const alerts = getEquipAlertStatus(e);
     return `<div class="card-row" onclick="openEquipDetail('${e.id}')">
-      <div class="equip-avatar">${e.unit_number}</div>
+      ${e.photo_url ? `<img src="${e.photo_url}" style="width:48px;height:48px;border-radius:10px;object-fit:cover;flex-shrink:0;border:1px solid var(--border)">` : `<div class="equip-avatar">${e.unit_number}</div>`}
       <div class="equip-info">
         <div class="equip-unit">${e.unit_number} · ${e.make || ''} ${e.model || ''}</div>
         <div class="equip-sub">${e.equipment_types?.name || ''} · ${e.location || 'No location'}</div>
@@ -2260,7 +2260,4 @@ async function createEmployee() {
     return;
   }
 
-  // Create new auth user
-  const { data, error } = await sb.auth.signUp({ email, password });
-  if (error) { showToast('Error: ' + error.message); return; }
-  if (data.user) 
+  
