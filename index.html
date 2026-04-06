@@ -2093,7 +2093,7 @@ async function submitAdminPasswordReset(email) {
 
   // Use Supabase admin API via edge function to reset password
   try {
-    const res = await fetch('https://fahkluyuvgxhmpdkvrcr.supabase.co/functions/v1/reset-employee-password', {
+    const res = await fetch('https://fahkluyuvgxhmpdkvrcr.supabase.co/functions/v1/passw-reset', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
