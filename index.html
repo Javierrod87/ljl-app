@@ -850,6 +850,30 @@ async function deleteWorkOrder(woId, woNumber) {
   loadWorkOrders();
 }
 
+async function saveEquipInfo(equipId) {
+  const status = document.getElementById('edit-status')?.value;
+  const location = document.getElementById('edit-location')?.value.trim();
+  const year = document.getElementById('edit-year')?.value;
+  const serial = document.getElementById('edit-serial')?.value.trim();
+  const make = document.getElementById('edit-make')?.value.trim();
+  const model = document.getElementById('edit-model')?.value.trim();
+
+  const updates = {
+    updated_at: new Date().toISOString()
+  };
+  if (status) updates.status = status;
+  if (location !== undefined) updates.location = location || null;
+  if (year) updates.year = parseInt(year);
+  if (serial !== undefined) updates.serial_number = serial || null;
+  if (make !== undefined) updates.make = make || null;
+  if (model !== undefined) updates.model = model || null;
+
+  const { error } = await sb.from('equipment').update(updates).eq('id', equipId);
+  if (error) { showToast('Error saving: ' + error.message); return; }
+  showToast('Equipment info saved!');
+  openEquipDetail(equipId);
+}
+
 async function updateEquipCategory(equipId) {
   const select = document.getElementById('equip-category-select');
   if (!select) return;
@@ -1715,12 +1739,40 @@ async function openEquipDetail(id) {
     <div class="card" style="margin-bottom:10px">
       <div class="card-header"><h2>Unit Info</h2></div>
       <div class="card-body info-list">
+        ${currentEmployee && ['admin','manager'].includes(currentEmployee.role) ? `
+        <div class="info-row"><span class="info-label">Current hours</span><span class="info-value" style="font-size:18px;color:var(--blue)">${e.current_hours || 0} hrs</span></div>
+        <div class="info-row"><span class="info-label">Status</span>
+          <select id="edit-status" style="border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:13px;background:white">
+            <option value="active" ${e.status === 'active' ? 'selected' : ''}>Active</option>
+            <option value="inactive" ${e.status === 'inactive' ? 'selected' : ''}>Inactive</option>
+            <option value="in_repair" ${e.status === 'in_repair' ? 'selected' : ''}>In Repair</option>
+            <option value="retired" ${e.status === 'retired' ? 'selected' : ''}>Retired</option>
+          </select>
+        </div>
+        <div class="info-row"><span class="info-label">Location</span><input id="edit-location" value="${e.location || ''}" placeholder="Enter location" style="border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:13px;text-align:right;width:160px"></div>
+        <div class="info-row"><span class="info-label">Year</span><input id="edit-year" type="number" value="${e.year || ''}" placeholder="Year" style="border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:13px;text-align:right;width:80px"></div>
+        <div class="info-row"><span class="info-label">Serial #</span><input id="edit-serial" value="${e.serial_number || ''}" placeholder="Serial number" style="border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:13px;text-align:right;width:160px"></div>
+        <div class="info-row"><span class="info-label">Make</span><input id="edit-make" value="${e.make || ''}" placeholder="Make" style="border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:13px;text-align:right;width:120px"></div>
+        <div class="info-row"><span class="info-label">Model</span><input id="edit-model" value="${e.model || ''}" placeholder="Model" style="border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:13px;text-align:right;width:120px"></div>
+        <button onclick="saveEquipInfo('${e.id}')" style="margin-top:12px;width:100%;padding:10px;background:var(--blue);color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Save Changes</button>
+        ` : `
         <div class="info-row"><span class="info-label">Current hours</span><span class="info-value" style="font-size:18px;color:var(--blue)">${e.current_hours || 0} hrs</span></div>
         <div class="info-row"><span class="info-label">Status</span><span class="info-value">${e.status}</span></div>
         <div class="info-row"><span class="info-label">Location</span><span class="info-value">${e.location || '—'}</span></div>
         <div class="info-row"><span class="info-label">Year</span><span class="info-value">${e.year || '—'}</span></div>
         <div class="info-row"><span class="info-label">Serial #</span><span class="info-value">${e.serial_number || '—'}</span></div>
+        `}
       </div>
+      ${currentEmployee && ['admin','manager'].includes(currentEmployee.role) ? `
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+        <label style="font-size:12px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:6px">Change Category</label>
+        <div style="display:flex;gap:8px">
+          <select id="equip-category-select" style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:white">
+            <option value="">Loading…</option>
+          </select>
+          <button onclick="updateEquipCategory('${e.id}')" style="background:var(--blue);color:white;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">Save</button>
+        </div>
+      </div>` : ''}
     </div>
     <div class="card" style="margin-bottom:10px">
       <div class="card-header" style="justify-content:space-between">
@@ -1788,6 +1840,11 @@ async function openEquipDetail(id) {
       <button onclick="deleteEquipment('${e.id}','${e.unit_number}')" style="background:#b91c1c;color:white;border:none;border-radius:8px;padding:12px 16px;font-size:14px;font-weight:600;cursor:pointer;width:100%">🗑 Delete Equipment</button>
     </div>` : ''}
   `;
+
+  // Load category dropdown after template renders
+  if (currentEmployee && ['admin','manager'].includes(currentEmployee.role)) {
+    setTimeout(() => loadEquipCategoryDropdown(e.equipment_type_id), 50);
+  }
 }
 
 function renderMaintScheduleItem(s, currentHours) {
@@ -2196,81 +2253,4 @@ async function submitEquipment() {
     const threshold = parseFloat(row.querySelector('.sr-threshold').value || 20);
     if (type && interval) {
       const lastHrs = parseFloat(hours || 0);
-      await sb.from('maintenance_schedules').insert({ equipment_id: equip.id, service_type: type, interval_hours: interval, alert_threshold_hours: threshold, last_service_hours: lastHrs, next_due_hours: lastHrs + interval });
-    }
-  }
-  showToast('Equipment added!');
-  ['eq-unit','eq-make','eq-model','eq-year','eq-hours','eq-serial','eq-location'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
-  document.getElementById('maint-schedule-builder').innerHTML = '';
-  scheduleRowCount = 0;
-  loadEquipmentOptions();
-}
-
-function addScheduleRow() {
-  scheduleRowCount++;
-  const div = document.createElement('div');
-  div.className = 'schedule-row';
-  div.style.cssText = 'background:var(--gray-light);border-radius:8px;padding:12px;margin-bottom:10px';
-  div.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-size:13px;font-weight:600">Service ${scheduleRowCount}</span><button onclick="this.closest('.schedule-row').remove()" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:18px">×</button></div>
-    <div class="field-row">
-      <div class="field"><label style="font-size:12px">Service type</label><input class="sr-type" type="text" placeholder="e.g. Oil Change" style="font-size:14px;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;width:100%"></div>
-      <div class="field"><label style="font-size:12px">Every (hrs)</label><input class="sr-interval" type="number" placeholder="250" style="font-size:14px;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;width:100%"></div>
-    </div>
-    <div class="field"><label style="font-size:12px">Alert when this many hours away</label><input class="sr-threshold" type="number" value="20" style="font-size:14px;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;width:100%"></div>
-  `;
-  document.getElementById('maint-schedule-builder').appendChild(div);
-}
-
-// =====================
-// HELPERS / OPTIONS
-// =====================
-async function loadEquipmentOptions() {
-  const { data } = await sb.from('equipment').select('id, unit_number, make, model').eq('is_active', true).order('unit_number');
-  const sel = document.getElementById('wo-equipment');
-  if (sel) { sel.innerHTML = '<option value="">Select equipment…</option>' + (data || []).map(e => `<option value="${e.id}">${e.unit_number} — ${e.make || ''} ${e.model || ''}</option>`).join(''); }
-}
-
-async function loadMechanicsOptions() {
-  const { data } = await sb.from('employees').select('id, name, role').eq('is_active', true).in('role', ['mechanic','foreman','manager','admin']);
-  const sel = document.getElementById('wo-assign');
-  if (sel) { sel.innerHTML = '<option value="">Unassigned</option>' + (data || []).map(e => `<option value="${e.id}">${e.name} (${e.role})</option>`).join(''); }
-}
-
-async function loadMechanicsIntoSelect(selId, currentId) {
-  const { data } = await sb.from('employees').select('id, name, role').eq('is_active', true).in('role', ['mechanic','foreman','manager','admin']);
-  const sel = document.getElementById(selId);
-  if (sel) { sel.innerHTML = '<option value="">— keep current —</option>' + (data || []).map(e => `<option value="${e.id}" ${e.id === currentId ? 'selected' : ''}>${e.name} (${e.role})</option>`).join(''); }
-}
-
-async function loadEquipmentTypes() {
-  const { data } = await sb.from('equipment_types').select('*').order('name');
-  const sel = document.getElementById('eq-type');
-  if (sel) { sel.innerHTML = '<option value="">Select type…</option>' + (data || []).map(t => `<option value="${t.id}">${t.name}</option>`).join(''); }
-}
-
-function getEquipAlertStatus(e, schedules) {
-  if (!schedules) return { cls: 'badge-gray', label: 'OK' };
-  const hrs = parseFloat(e.current_hours || 0);
-  let hasOverdue = false, hasSoon = false;
-  schedules.forEach(s => {
-    const rem = parseFloat(s.next_due_hours || 0) - hrs;
-    if (rem <= 0) hasOverdue = true;
-    else if (rem <= parseFloat(s.alert_threshold_hours || 20)) hasSoon = true;
-  });
-  if (hasOverdue) return { cls: 'badge-red', label: 'Overdue' };
-  if (hasSoon) return { cls: 'badge-amber', label: 'Due soon' };
-  return { cls: 'badge-green', label: 'OK' };
-}
-
-function renderStatusBadge(status) {
-  const map = { new: 'badge-gray', assigned: 'badge-blue', in_progress: 'badge-blue', waiting_parts: 'badge-amber', completed: 'badge-green', closed: 'badge-gray' };
-  return `<span class="badge ${map[status] || 'badge-gray'}">${formatStatus(status)}</span>`;
-}
-
-function renderPriBadge(priority) {
-  const map = { critical: 'badge-red', high: 'badge-amber', normal: 'badge-blue', low: 'badge-gray' };
-  return `<span class="badge ${map[priority] || 'badge-gray'}">${priority?.charAt(0).toUpperCase() + priority?.slice(1)}</span>`;
-}
-
-function
+      await sb.from('maintenance_schedules').insert({ equipment_id: equip.id, service_type: type, interval_hours: interval, alert_threshold_hours: threshold, last_service_hours: lastHrs, ne
