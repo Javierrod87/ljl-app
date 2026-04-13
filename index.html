@@ -1054,7 +1054,28 @@ async function uploadEquipPhoto(equipId, input) {
   openEquipDetail(equipId);
 }
 
+function toggleEquipEdit(equipId) {
+  const readMode = document.getElementById('equip-read-mode');
+  const editMode = document.getElementById('equip-edit-mode');
+  const btn = document.getElementById('equip-edit-btn');
+  if (!readMode || !editMode) return;
+  readMode.style.display = 'none';
+  editMode.style.display = 'block';
+  if (btn) btn.style.display = 'none';
+}
+
+function cancelEquipEdit() {
+  const readMode = document.getElementById('equip-read-mode');
+  const editMode = document.getElementById('equip-edit-mode');
+  const btn = document.getElementById('equip-edit-btn');
+  if (!readMode || !editMode) return;
+  editMode.style.display = 'none';
+  readMode.style.display = 'block';
+  if (btn) btn.style.display = 'inline-block';
+}
+
 async function saveEquipInfo(equipId) {
+  const unit = document.getElementById('edit-unit')?.value.trim();
   const status = document.getElementById('edit-status')?.value;
   const location = document.getElementById('edit-location')?.value.trim();
   const year = document.getElementById('edit-year')?.value;
@@ -1062,9 +1083,10 @@ async function saveEquipInfo(equipId) {
   const make = document.getElementById('edit-make')?.value.trim();
   const model = document.getElementById('edit-model')?.value.trim();
 
-  const updates = {
-    updated_at: new Date().toISOString()
-  };
+  if (!unit) { showToast('Unit number cannot be empty'); return; }
+
+  const updates = { updated_at: new Date().toISOString() };
+  updates.unit_number = unit;
   if (status) updates.status = status;
   if (location !== undefined) updates.location = location || null;
   if (year) updates.year = parseInt(year);
@@ -1073,7 +1095,7 @@ async function saveEquipInfo(equipId) {
   if (model !== undefined) updates.model = model || null;
 
   const { error } = await restUpdate('equipment', updates, 'id=eq.' + equipId);
-  if (error) { showToast('Error saving: ' + error.message); return; }
+  if (error) { showToast('Error: ' + error.message); return; }
   showToast('Equipment info saved!');
   openEquipDetail(equipId);
 }
@@ -1959,39 +1981,54 @@ async function openEquipDetail(id) {
 
     </div>
     <div class="card" style="margin-bottom:10px">
-      <div class="card-header"><h2>Unit Info</h2></div>
-      <div class="card-body info-list">
+      <div class="card-header" style="justify-content:space-between">
+        <h2>Unit Info</h2>
         ${currentEmployee && ['admin','manager'].includes(currentEmployee.role) ? `
-        <div class="info-row"><span class="info-label">Current hours</span><span class="info-value" style="font-size:18px;color:var(--blue)">${e.current_hours || 0} hrs</span></div>
+          <button id="equip-edit-btn" onclick="toggleEquipEdit('${e.id}')" style="background:var(--blue-light);color:var(--blue);border:1px solid var(--blue);border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer">Edit</button>
+        ` : ''}
+      </div>
+
+      <!-- READ MODE -->
+      <div id="equip-read-mode" class="card-body info-list">
+        <div class="info-row"><span class="info-label">Unit #</span><span class="info-value">${e.unit_number || '—'}</span></div>
+        <div class="info-row"><span class="info-label">Make</span><span class="info-value">${e.make || '—'}</span></div>
+        <div class="info-row"><span class="info-label">Model</span><span class="info-value">${e.model || '—'}</span></div>
+        <div class="info-row"><span class="info-label">Year</span><span class="info-value">${e.year || '—'}</span></div>
+        <div class="info-row"><span class="info-label">Serial #</span><span class="info-value">${e.serial_number || '—'}</span></div>
+        <div class="info-row"><span class="info-label">Status</span><span class="info-value">${e.status || '—'}</span></div>
+        <div class="info-row"><span class="info-label">Location</span><span class="info-value">${e.location || '—'}</span></div>
+        <div class="info-row"><span class="info-label">Current hours</span><span class="info-value" style="color:var(--blue);font-weight:700">${e.current_hours || 0} hrs</span></div>
+        ${e.photo_url ? `<img src="${e.photo_url}" style="width:100%;max-height:180px;object-fit:cover;border-radius:8px;border:1px solid var(--border);margin-top:10px">` : ''}
+      </div>
+
+      <!-- EDIT MODE (hidden by default) -->
+      <div id="equip-edit-mode" class="card-body info-list" style="display:none">
+        <div class="info-row"><span class="info-label">Unit #</span><input id="edit-unit" value="${e.unit_number || ''}" placeholder="Unit number" style="border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:13px;text-align:right;width:140px"></div>
+        <div class="info-row"><span class="info-label">Make</span><input id="edit-make" value="${e.make || ''}" placeholder="Make" style="border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:13px;text-align:right;width:140px"></div>
+        <div class="info-row"><span class="info-label">Model</span><input id="edit-model" value="${e.model || ''}" placeholder="Model" style="border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:13px;text-align:right;width:140px"></div>
+        <div class="info-row"><span class="info-label">Year</span><input id="edit-year" type="number" value="${e.year || ''}" placeholder="Year" style="border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:13px;text-align:right;width:90px"></div>
+        <div class="info-row"><span class="info-label">Serial #</span><input id="edit-serial" value="${e.serial_number || ''}" placeholder="Serial number" style="border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:13px;text-align:right;width:140px"></div>
         <div class="info-row"><span class="info-label">Status</span>
-          <select id="edit-status" style="border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:13px;background:white">
+          <select id="edit-status" style="border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:13px;background:white">
             <option value="active" ${e.status === 'active' ? 'selected' : ''}>Active</option>
             <option value="inactive" ${e.status === 'inactive' ? 'selected' : ''}>Inactive</option>
             <option value="in_repair" ${e.status === 'in_repair' ? 'selected' : ''}>In Repair</option>
             <option value="retired" ${e.status === 'retired' ? 'selected' : ''}>Retired</option>
           </select>
         </div>
-        <div class="info-row"><span class="info-label">Location</span><input id="edit-location" value="${e.location || ''}" placeholder="Enter location" style="border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:13px;text-align:right;width:160px"></div>
-        <div class="info-row"><span class="info-label">Year</span><input id="edit-year" type="number" value="${e.year || ''}" placeholder="Year" style="border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:13px;text-align:right;width:80px"></div>
-        <div class="info-row"><span class="info-label">Serial #</span><input id="edit-serial" value="${e.serial_number || ''}" placeholder="Serial number" style="border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:13px;text-align:right;width:160px"></div>
-        <div class="info-row"><span class="info-label">Make</span><input id="edit-make" value="${e.make || ''}" placeholder="Make" style="border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:13px;text-align:right;width:120px"></div>
-        <div class="info-row"><span class="info-label">Model</span><input id="edit-model" value="${e.model || ''}" placeholder="Model" style="border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:13px;text-align:right;width:120px"></div>
+        <div class="info-row"><span class="info-label">Location</span><input id="edit-location" value="${e.location || ''}" placeholder="Enter location" style="border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:13px;text-align:right;width:140px"></div>
         <div style="margin-top:12px">
           <label style="font-size:13px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:6px">Equipment Photo</label>
-          ${e.photo_url ? `<img src="${e.photo_url}" style="width:100%;max-height:200px;object-fit:cover;border-radius:8px;border:1px solid var(--border);margin-bottom:8px">` : ''}
+          ${e.photo_url ? `<img src="${e.photo_url}" style="width:100%;max-height:180px;object-fit:cover;border-radius:8px;border:1px solid var(--border);margin-bottom:8px">` : ''}
           <input type="file" id="equip-photo-input" accept="image/*" capture="environment" style="display:none" onchange="uploadEquipPhoto('${e.id}', this)">
           <button onclick="document.getElementById('equip-photo-input').click()" style="width:100%;padding:10px;background:var(--gray-light);color:var(--text);border:1px dashed var(--border);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">
             📷 ${e.photo_url ? 'Change Photo' : 'Add Photo'}
           </button>
         </div>
-        <button onclick="saveEquipInfo('${e.id}')" style="margin-top:12px;width:100%;padding:10px;background:var(--blue);color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Save Changes</button>
-        ` : `
-        <div class="info-row"><span class="info-label">Current hours</span><span class="info-value" style="font-size:18px;color:var(--blue)">${e.current_hours || 0} hrs</span></div>
-        <div class="info-row"><span class="info-label">Status</span><span class="info-value">${e.status}</span></div>
-        <div class="info-row"><span class="info-label">Location</span><span class="info-value">${e.location || '—'}</span></div>
-        <div class="info-row"><span class="info-label">Year</span><span class="info-value">${e.year || '—'}</span></div>
-        <div class="info-row"><span class="info-label">Serial #</span><span class="info-value">${e.serial_number || '—'}</span></div>
-        `}
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button onclick="saveEquipInfo('${e.id}')" style="flex:1;padding:10px;background:var(--blue);color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Save Changes</button>
+          <button onclick="cancelEquipEdit()" style="padding:10px 16px;background:var(--gray-light);color:var(--text);border:1px solid var(--border);border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Cancel</button>
+        </div>
       </div>
       ${currentEmployee && ['admin','manager'].includes(currentEmployee.role) ? `
       <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
