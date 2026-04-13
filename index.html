@@ -816,47 +816,30 @@ async function handleLogout() {
 }
 
 async function loadEmployee() {
-  dbg('   loadEmployee: querying auth_user_id = ' + currentUser.id, '#888');
+  dbg('5a. about to await employee query (auth_user_id=' + currentUser.id + ')', '#ff0');
 
-  // Use maybeSingle() — returns null immediately if blocked/not found, never hangs
-  const { data, error } = await sb.from('employees')
-    .select('*')
+  const { data, error } = await sb
+    .from('employees')
+    .select('id, name, email, role, auth_user_id')
     .eq('auth_user_id', currentUser.id)
     .maybeSingle();
 
-  if (!data) {
-    error = error || { message: 'No employee row found', code: 'NOT_FOUND' };
-  }
+  dbg('5b. employee query resolved', '#ff0');
+  dbg('5c. employee query data: ' + JSON.stringify(data), '#0f0');
+  dbg('5d. employee query error: ' + JSON.stringify(error), error ? '#f00' : '#888');
 
-  if (error) {
-    dbg('   loadEmployee DB ERROR: ' + error.message + ' (code: ' + error.code + ')', '#f00');
+  if (error || !data) {
+    const msg = error ? error.message : 'No employee row found';
+    dbg('5e. loadEmployee FAILED: ' + msg, '#f00');
     const errEl = document.getElementById('auth-error');
-    if (errEl) {
-      errEl.textContent = 'Account not found. Contact your admin. (' + error.message + ')';
-      errEl.style.display = 'block';
-    }
-    await sb.auth.signOut();
-    appStarted = false;
-    currentEmployee = null;
-    return;
-  }
-
-  if (!data) {
-    dbg('   loadEmployee: query returned null — no matching employee row', '#f00');
-    const errEl = document.getElementById('auth-error');
-    if (errEl) {
-      errEl.textContent = 'Account not found. Contact your admin.';
-      errEl.style.display = 'block';
-    }
-    await sb.auth.signOut();
-    appStarted = false;
+    if (errEl) { errEl.textContent = 'Account not found: ' + msg; errEl.style.display = 'block'; }
     currentEmployee = null;
     return;
   }
 
   currentEmployee = data;
-  dbg('   loadEmployee: found ' + data.name + ' / role: ' + data.role, '#0f0');
-  document.getElementById('topbar-user').textContent = currentEmployee.name;
+  dbg('5f. loadEmployee SUCCESS: ' + data.name + ' / ' + data.role, '#0f0');
+  document.getElementById('topbar-user').textContent = data.name;
 }
 
 async function startApp() {
