@@ -252,6 +252,15 @@
 </head>
 <body>
 
+<!-- DEBUG PANEL -->
+<div id="debug-panel" style="position:fixed;bottom:0;left:0;right:0;background:#000;color:#0f0;font-family:monospace;font-size:11px;padding:8px;z-index:99999;max-height:40vh;overflow-y:auto;display:block">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+    <span style="color:#ff0;font-weight:bold">DEBUG v2.0 — LJL Auth Flow</span>
+    <button onclick="document.getElementById('debug-panel').style.display='none'" style="background:#333;color:#fff;border:none;padding:2px 8px;cursor:pointer;font-size:10px">Hide</button>
+  </div>
+  <div id="debug-log"></div>
+</div>
+
 <!-- AUTH SCREEN -->
 <div id="auth-screen" style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(160deg,#1c1c1c 0%,#2d0a0a 50%,#7f1d1d 100%);padding:24px">
   <div class="auth-card">
@@ -636,6 +645,25 @@ let equipTypeFilter = 'all';
 // AUTH — anchor tags with window.load for maximum iOS compatibility
 // =====================
 
+// =====================
+// DEBUG LOGGING
+// =====================
+function dbg(msg, color) {
+  color = color || '#0f0';
+  var log = document.getElementById('debug-log');
+  if (!log) return;
+  var line = document.createElement('div');
+  line.style.color = color;
+  line.style.borderBottom = '1px solid #222';
+  line.style.paddingBottom = '2px';
+  line.style.marginBottom = '2px';
+  var ts = new Date().toISOString().substr(11,12);
+  line.textContent = '[' + ts + '] ' + msg;
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+  console.log('[DBG]', msg);
+}
+
 // Auth uses direct onclick attributes for maximum Safari compatibility
 
 function showForgotPassword() {
@@ -742,12 +770,36 @@ async function handleLogin() {
   const password = document.getElementById('login-password').value;
   const errEl = document.getElementById('auth-error');
   errEl.style.display = 'none';
+
   if (!email || !password) { showAuthError('Please enter your email and password.'); return; }
-  const { data, error } = await sb.auth.signInWithPassword({ email, password });
-  if (error) { showAuthError('Incorrect email or password. Please try again.'); return; }
-  currentUser = data.user;
-  await loadEmployee();
-  startApp();
+
+  // Disable button while running
+  const btn = document.getElementById('login-link');
+  if (btn) { btn.disabled = true; btn.textContent = 'Signing in…'; }
+
+  try {
+    dbg('1. Login button clicked — email: ' + email, '#ff0');
+    dbg('2. Calling signInWithPassword…', '#0ff');
+
+    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+
+    if (error) {
+      dbg('3. signInWithPassword FAILED: ' + error.message, '#f00');
+      showAuthError('Incorrect email or password. Please try again.');
+      if (btn) { btn.disabled = false; btn.textContent = 'Sign In'; }
+      return;
+    }
+
+    dbg('3. signInWithPassword SUCCESS — user: ' + data.user.email, '#0f0');
+    // Note: onAuthStateChange will fire SIGNED_IN and handle loadEmployee + startApp
+    // handleLogin does NOT call them directly to avoid double-fire
+
+  } catch(e) {
+    dbg('EXCEPTION in handleLogin: ' + e.message, '#f00');
+    showAuthError('Unexpected error. Please try again.');
+  }
+
+  if (btn) { btn.disabled = false; btn.textContent = 'Sign In'; }
 }
 
 function showAuthError(msg) {
@@ -764,23 +816,59 @@ async function handleLogout() {
 }
 
 async function loadEmployee() {
-  const { data } = await sb.from('employees').select('*').eq('auth_user_id', currentUser.id).single();
-  currentEmployee = data;
-  if (currentEmployee) {
-    document.getElementById('topbar-user').textContent = currentEmployee.name;
+  dbg('   loadEmployee: querying employees table for auth_user_id: ' + currentUser.id, '#888');
+  const { data, error } = await sb.from('employees').select('*').eq('auth_user_id', currentUser.id).single();
+
+  if (error) {
+    dbg('   loadEmployee DB ERROR: ' + error.message + ' (code: ' + error.code + ')', '#f00');
+    const errEl = document.getElementById('auth-error');
+    if (errEl) {
+      errEl.textContent = 'Account not found. Contact your admin. (' + error.message + ')';
+      errEl.style.display = 'block';
+    }
+    await sb.auth.signOut();
+    appStarted = false;
+    currentEmployee = null;
+    return;
   }
+
+  if (!data) {
+    dbg('   loadEmployee: query returned null — no matching employee row', '#f00');
+    const errEl = document.getElementById('auth-error');
+    if (errEl) {
+      errEl.textContent = 'Account not found. Contact your admin.';
+      errEl.style.display = 'block';
+    }
+    await sb.auth.signOut();
+    appStarted = false;
+    currentEmployee = null;
+    return;
+  }
+
+  currentEmployee = data;
+  dbg('   loadEmployee: found ' + data.name + ' / role: ' + data.role, '#0f0');
+  document.getElementById('topbar-user').textContent = currentEmployee.name;
 }
 
 async function startApp() {
-  document.getElementById('auth-screen').style.display = 'none';
-  document.getElementById('app').style.display = 'flex';
-  showScreen('dashboard');
-  initLanguage();
-  applyRolePermissions();
-  loadDashboard();
-  loadEquipmentOptions();
-  loadMechanicsOptions();
-  loadEquipmentTypes();
+  try {
+    dbg('   startApp: hiding auth-screen, showing app', '#888');
+    document.getElementById('auth-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+    dbg('   startApp: calling showScreen dashboard', '#888');
+    showScreen('dashboard');
+    initLanguage();
+    applyRolePermissions();
+    dbg('   startApp: loading dashboard data', '#888');
+    loadDashboard();
+    loadEquipmentOptions();
+    loadMechanicsOptions();
+    loadEquipmentTypes();
+    dbg('   startApp: all calls made successfully', '#0f0');
+  } catch(e) {
+    dbg('EXCEPTION inside startApp: ' + e.message, '#f00');
+    throw e;
+  }
 }
 
 // Check existing session on load
@@ -1370,45 +1458,94 @@ function initLanguage() {
 
 // Auth state listener — handles normal login AND password reset links
 // This fires for all auth events including when a reset link is clicked
+// Single auth handler
+let appStarted = false;
+let appStarting = false;
+
+function resetStartupFlags(reason) {
+  dbg('   FLAGS RESET: ' + reason, '#f80');
+  appStarted = false;
+  appStarting = false;
+}
+
 sb.auth.onAuthStateChange(async (event, session) => {
-  console.log('Auth event:', event);
+  dbg('4. Auth event received: ' + event + (session ? ' (session exists)' : ' (no session)'), '#0ff');
 
   if (event === 'PASSWORD_RECOVERY') {
-    // User clicked a reset link — show the set new password screen
+    dbg('   → PASSWORD_RECOVERY: showing reset screen', '#ff0');
     document.getElementById('auth-screen').style.display = 'none';
     document.getElementById('forgot-screen').style.display = 'none';
     document.getElementById('reset-screen').style.display = 'flex';
+    resetStartupFlags('PASSWORD_RECOVERY');
     return;
   }
 
-  if (event === 'SIGNED_IN' && session) {
-    // Check if we're already on the reset screen (don't redirect away)
+  if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
+    if (appStarted) {
+      dbg('   → appStarted=true — already fully started, skipping', '#888');
+      return;
+    }
+    if (appStarting) {
+      dbg('   → appStarting=true — startup in progress, skipping duplicate event', '#888');
+      return;
+    }
     const resetVisible = document.getElementById('reset-screen').style.display === 'flex';
-    if (resetVisible) return;
+    if (resetVisible) {
+      dbg('   → reset screen visible — skipping startApp', '#888');
+      return;
+    }
 
+    appStarting = true;
+    dbg('   → appStarting set TRUE', '#ff0');
     currentUser = session.user;
-    await loadEmployee();
-    startApp();
+    dbg('   → proceeding to loadEmployee for: ' + session.user.email, '#0f0');
+
+    // loadEmployee with timeout guard
+    try {
+      dbg('5. Calling loadEmployee… (10s timeout)', '#0ff');
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('loadEmployee timed out after 10s')), 10000)
+      );
+      await Promise.race([loadEmployee(), timeoutPromise]);
+    } catch(e) {
+      dbg('EXCEPTION/TIMEOUT in loadEmployee: ' + e.message, '#f00');
+      const errEl = document.getElementById('auth-error');
+      if (errEl) { errEl.textContent = 'Login error: ' + e.message; errEl.style.display = 'block'; }
+      resetStartupFlags('loadEmployee threw/timed out');
+      await sb.auth.signOut();
+      return;
+    }
+
+    if (!currentEmployee) {
+      dbg('6. loadEmployee: NO EMPLOYEE FOUND — resetting flags', '#f00');
+      resetStartupFlags('loadEmployee returned no employee');
+      return;
+    }
+
+    dbg('6. loadEmployee DONE — name: ' + currentEmployee.name + ', role: ' + currentEmployee.role, '#0f0');
+
+    try {
+      dbg('7. Calling startApp…', '#0ff');
+      await startApp();
+      appStarted = true;
+      appStarting = false;
+      dbg('8. startApp completed — appStarted set TRUE ✓', '#0f0');
+    } catch(e) {
+      dbg('EXCEPTION in startApp: ' + e.message, '#f00');
+      const errEl = document.getElementById('auth-error');
+      if (errEl) { errEl.textContent = 'App failed to start: ' + e.message; errEl.style.display = 'block'; }
+      resetStartupFlags('startApp threw');
+    }
     return;
   }
 
   if (event === 'SIGNED_OUT') {
+    dbg('   → SIGNED_OUT: returning to login screen', '#ff0');
+    resetStartupFlags('SIGNED_OUT');
     document.getElementById('app').style.display = 'none';
     document.getElementById('auth-screen').style.display = 'flex';
     currentUser = null;
     currentEmployee = null;
-  }
-});
-
-// Also check for existing session on page load (for returning users)
-sb.auth.getSession().then(({ data: { session } }) => {
-  if (session && session.user) {
-    // Only auto-login if not in a reset flow
-    const hash = window.location.hash;
-    if (!hash.includes('type=recovery') && !hash.includes('access_token')) {
-      currentUser = session.user;
-      loadEmployee().then(() => startApp());
-    }
   }
 });
 
@@ -2227,39 +2364,8 @@ function showAddEmployee() {
 }
 
 async function adminResetPassword(employeeId, name, email) {
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-overlay';
-  overlay.innerHTML = `<div class="modal">
-    <div class="modal-handle"></div>
-    <h2>Reset Password — ${name}</h2>
-    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">Set a new temporary password for ${name}. Share it with them privately and ask them to change it after logging in.</p>
-    <div class="field"><label>New temporary password</label><input type="password" id="admin-reset-pw" placeholder="Enter new password (min 6 characters)"></div>
-    <div class="field"><label>Confirm password</label><input type="password" id="admin-reset-pw-confirm" placeholder="Confirm password"></div>
-    <div id="admin-reset-error" style="color:var(--red);font-size:13px;margin-bottom:10px;display:none"></div>
-    <button class="btn" onclick="submitAdminPasswordReset('${email}')">Set New Password</button>
-    <button class="btn btn-secondary" style="margin-top:8px" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
-  </div>`;
-  document.body.appendChild(overlay);
-}
+  if (!confirm('Send a password reset email to ' + name + ' (' + email + ')?')) return;
 
-async function submitAdminPasswordReset(email) {
-  const pw = document.getElementById('admin-reset-pw').value;
-  const confirm = document.getElementById('admin-reset-pw-confirm').value;
-  const errEl = document.getElementById('admin-reset-error');
-  errEl.style.display = 'none';
-
-  if (!pw || pw.length < 6) {
-    errEl.textContent = 'Password must be at least 6 characters.';
-    errEl.style.display = 'block';
-    return;
-  }
-  if (pw !== confirm) {
-    errEl.textContent = 'Passwords do not match.';
-    errEl.style.display = 'block';
-    return;
-  }
-
-  // Use Supabase admin API via edge function to reset password
   try {
     const res = await fetch('https://fahkluyuvgxhmpdkvrcr.supabase.co/functions/v1/passw-reset', {
       method: 'POST',
@@ -2267,19 +2373,16 @@ async function submitAdminPasswordReset(email) {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZhaGtsdXl1dmd4aG1wZGt2cmNyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwNTUwMjAsImV4cCI6MjA5MDYzMTAyMH0.5ALFe-1xuwKUvlKDykngVQK1vbLRCKbsnU3KiAus46o'
       },
-      body: JSON.stringify({ email, password: pw })
+      body: JSON.stringify({ email })
     });
     const data = await res.json();
     if (data.error) {
-      errEl.textContent = 'Error: ' + data.error;
-      errEl.style.display = 'block';
+      showToast('Error: ' + data.error);
       return;
     }
-    document.querySelector('.modal-overlay')?.remove();
-    showToast('Password reset for ' + email + ' successfully!');
+    showToast('Reset email sent to ' + name + '!');
   } catch(e) {
-    errEl.textContent = 'Error connecting to server. Try again.';
-    errEl.style.display = 'block';
+    showToast('Error connecting to server. Try again.');
   }
 }
 
