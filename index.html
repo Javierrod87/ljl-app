@@ -816,8 +816,17 @@ async function handleLogout() {
 }
 
 async function loadEmployee() {
-  dbg('   loadEmployee: querying employees table for auth_user_id: ' + currentUser.id, '#888');
-  const { data, error } = await sb.from('employees').select('*').eq('auth_user_id', currentUser.id).single();
+  dbg('   loadEmployee: querying auth_user_id = ' + currentUser.id, '#888');
+
+  // Use maybeSingle() — returns null immediately if blocked/not found, never hangs
+  const { data, error } = await sb.from('employees')
+    .select('*')
+    .eq('auth_user_id', currentUser.id)
+    .maybeSingle();
+
+  if (!data) {
+    error = error || { message: 'No employee row found', code: 'NOT_FOUND' };
+  }
 
   if (error) {
     dbg('   loadEmployee DB ERROR: ' + error.message + ' (code: ' + error.code + ')', '#f00');
