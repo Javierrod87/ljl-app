@@ -445,10 +445,16 @@
       <div class="form-section">
         <h3>Photos</h3>
         <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Attach photos of the issue. You can take a photo or choose from your library.</p>
-        <input type="file" id="wo-photos" accept="image/*" multiple capture="environment" style="display:none" onchange="previewPhotos(this)">
-        <button class="action-btn" style="background:var(--blue-light);color:var(--blue);width:100%;text-align:center;margin-bottom:10px" onclick="document.getElementById('wo-photos').click()">
-          + Take Photo / Choose from Library
-        </button>
+        <input type="file" id="wo-photos-camera" accept="image/*" multiple capture="environment" style="display:none" onchange="previewPhotos(this)">
+        <input type="file" id="wo-photos-library" accept="image/*" multiple style="display:none" onchange="previewPhotos(this)">
+        <div style="display:flex;gap:8px;margin-bottom:10px">
+          <button class="action-btn" style="background:var(--blue-light);color:var(--blue);flex:1;text-align:center" onclick="document.getElementById('wo-photos-camera').click()">
+            📷 Take Photo
+          </button>
+          <button class="action-btn" style="background:var(--blue-light);color:var(--blue);flex:1;text-align:center" onclick="document.getElementById('wo-photos-library').click()">
+            🖼 Choose from Library
+          </button>
+        </div>
         <div id="photo-preview" style="display:flex;flex-wrap:wrap;gap:8px"></div>
       </div>
       <div class="btn-row">
@@ -1884,6 +1890,7 @@ async function submitWorkOrder() {
 
 function previewPhotos(input) {
   const preview = document.getElementById('photo-preview');
+  // Show previews from this input, keep any existing ones
   preview.innerHTML = '';
   const files = Array.from(input.files);
   files.forEach((file, i) => {
@@ -1908,9 +1915,11 @@ function removePhoto(index) {
 }
 
 async function uploadPhotos(workOrderId) {
-  const input = document.getElementById('wo-photos');
-  if (!input.files || input.files.length === 0) return;
-  for (const file of input.files) {
+  const cam = document.getElementById('wo-photos-camera');
+  const lib = document.getElementById('wo-photos-library');
+  const allFiles = [...(cam?.files || []), ...(lib?.files || [])];
+  if (allFiles.length === 0) return;
+  for (const file of allFiles) {
     const ext = file.name.split('.').pop();
     const fileName = workOrderId + '/' + Date.now() + '.' + ext;
     const { data: urlData, error } = await storageUpload('work-order-photos', fileName, file);
@@ -2020,10 +2029,12 @@ async function openEquipDetail(id) {
         <div style="margin-top:12px">
           <label style="font-size:13px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:6px">Equipment Photo</label>
           ${e.photo_url ? `<img src="${e.photo_url}" style="width:100%;max-height:180px;object-fit:cover;border-radius:8px;border:1px solid var(--border);margin-bottom:8px">` : ''}
-          <input type="file" id="equip-photo-input" accept="image/*" capture="environment" style="display:none" onchange="uploadEquipPhoto('${e.id}', this)">
-          <button onclick="document.getElementById('equip-photo-input').click()" style="width:100%;padding:10px;background:var(--gray-light);color:var(--text);border:1px dashed var(--border);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">
-            📷 ${e.photo_url ? 'Change Photo' : 'Add Photo'}
-          </button>
+          <input type="file" id="equip-photo-camera" accept="image/*" capture="environment" style="display:none" onchange="uploadEquipPhoto('${e.id}', this)">
+          <input type="file" id="equip-photo-library" accept="image/*" style="display:none" onchange="uploadEquipPhoto('${e.id}', this)">
+          <div style="display:flex;gap:8px">
+            <button onclick="document.getElementById('equip-photo-camera').click()" style="flex:1;padding:10px;background:var(--gray-light);color:var(--text);border:1px dashed var(--border);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">📷 Take Photo</button>
+            <button onclick="document.getElementById('equip-photo-library').click()" style="flex:1;padding:10px;background:var(--gray-light);color:var(--text);border:1px dashed var(--border);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">🖼 Library</button>
+          </div>
         </div>
         <div style="display:flex;gap:8px;margin-top:12px">
           <button onclick="saveEquipInfo('${e.id}')" style="flex:1;padding:10px;background:var(--blue);color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Save Changes</button>
