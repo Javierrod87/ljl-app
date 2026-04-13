@@ -252,18 +252,6 @@
 </head>
 <body>
 
-<!-- DEBUG PANEL -->
-<div id="debug-panel" style="position:fixed;bottom:0;left:0;right:0;background:#000;color:#0f0;font-family:monospace;font-size:11px;padding:8px;z-index:99999;max-height:40vh;overflow-y:auto;display:block">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-    <span style="color:#ff0;font-weight:bold">DEBUG v2.0 — LJL Auth Flow</span>
-    <button onclick="document.getElementById('debug-panel').style.display='none'" style="background:#333;color:#fff;border:none;padding:2px 8px;cursor:pointer;font-size:10px">Hide</button>
-  </div>
-  <div style="margin-bottom:4px">
-    <button onclick="testEmployeeQuery()" style="background:#333;color:#ff0;border:1px solid #ff0;padding:3px 10px;cursor:pointer;font-size:10px;font-family:monospace">▶ Test Employee Query</button>
-    <button onclick="document.getElementById('debug-log').innerHTML=''" style="background:#333;color:#888;border:1px solid #555;padding:3px 10px;cursor:pointer;font-size:10px;font-family:monospace">Clear</button>
-  </div>
-  <div id="debug-log"></div>
-</div>
 
 <!-- AUTH SCREEN -->
 <div id="auth-screen" style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(160deg,#1c1c1c 0%,#2d0a0a 50%,#7f1d1d 100%);padding:24px">
@@ -726,17 +714,6 @@ async function storageUpload(bucket, path, file) {
   return { data: { publicUrl }, error: null };
 }
 
-// Verify client is functional immediately
-setTimeout(function() {
-  try {
-    dbg('CLIENT CHECK: typeof sb = ' + typeof sb, '#ff0');
-    dbg('CLIENT CHECK: typeof sb.from = ' + typeof sb.from, '#ff0');
-    dbg('CLIENT CHECK: typeof fetch = ' + typeof fetch, '#ff0');
-    dbg('CLIENT CHECK: supabase version loaded = ' + (typeof supabase !== 'undefined' ? 'yes' : 'NO - MISSING'), typeof supabase !== 'undefined' ? '#0f0' : '#f00');
-  } catch(e) {
-    dbg('CLIENT CHECK ERROR: ' + e.message, '#f00');
-  }
-}, 500);
 
 let currentUser = null;
 let currentEmployee = null;
@@ -753,25 +730,6 @@ let equipTypeFilter = 'all';
 // =====================
 // AUTH — anchor tags with window.load for maximum iOS compatibility
 // =====================
-
-// =====================
-// DEBUG LOGGING
-// =====================
-function dbg(msg, color) {
-  color = color || '#0f0';
-  var log = document.getElementById('debug-log');
-  if (!log) return;
-  var line = document.createElement('div');
-  line.style.color = color;
-  line.style.borderBottom = '1px solid #222';
-  line.style.paddingBottom = '2px';
-  line.style.marginBottom = '2px';
-  var ts = new Date().toISOString().substr(11,12);
-  line.textContent = '[' + ts + '] ' + msg;
-  log.appendChild(line);
-  log.scrollTop = log.scrollHeight;
-  console.log('[DBG]', msg);
-}
 
 // Auth uses direct onclick attributes for maximum Safari compatibility
 
@@ -887,24 +845,19 @@ async function handleLogin() {
   if (btn) { btn.disabled = true; btn.textContent = 'Signing in…'; }
 
   try {
-    dbg('1. Login button clicked — email: ' + email, '#ff0');
-    dbg('2. Calling signInWithPassword…', '#0ff');
 
     const { data, error } = await sb.auth.signInWithPassword({ email, password });
 
     if (error) {
-      dbg('3. signInWithPassword FAILED: ' + error.message, '#f00');
       showAuthError('Incorrect email or password. Please try again.');
       if (btn) { btn.disabled = false; btn.textContent = 'Sign In'; }
       return;
     }
 
-    dbg('3. signInWithPassword SUCCESS — user: ' + data.user.email, '#0f0');
     // Note: onAuthStateChange will fire SIGNED_IN and handle loadEmployee + startApp
     // handleLogin does NOT call them directly to avoid double-fire
 
   } catch(e) {
-    dbg('EXCEPTION in handleLogin: ' + e.message, '#f00');
     showAuthError('Unexpected error. Please try again.');
   }
 
@@ -926,153 +879,35 @@ async function handleLogout() {
 
 async function loadEmployee() {
   const uid = currentUser.id;
-  dbg('5a. loadEmployee REST fetch for uid=' + uid, '#ff0');
   const { data, error } = await restFetchOne(
     'employees?select=id,name,email,role,auth_user_id&auth_user_id=eq.' + uid
   );
-  dbg('5b. loadEmployee resolved — data: ' + JSON.stringify(data) + ' error: ' + JSON.stringify(error), data ? '#0f0' : '#f00');
   if (error || !data) {
     const msg = error ? error.message : 'No employee row found';
-    dbg('5c. FAILED: ' + msg, '#f00');
     const errEl = document.getElementById('auth-error');
     if (errEl) { errEl.textContent = 'Account not found: ' + msg; errEl.style.display = 'block'; }
     currentEmployee = null;
     return;
   }
   currentEmployee = data;
-  dbg('5c. SUCCESS: ' + data.name + ' / ' + data.role, '#0f0');
   document.getElementById('topbar-user').textContent = data.name;
 }
 
 // Store session from onAuthStateChange so we don't need getSession()
 let _cachedSession = null;
 
-async function withTimeout(promise, ms, label) {
-  let timer;
-  const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error(label + ' TIMEOUT after ' + ms + 'ms')), ms);
-  });
-  try {
-    const result = await Promise.race([promise, timeout]);
-    clearTimeout(timer);
-    return { result, timedOut: false };
-  } catch(e) {
-    clearTimeout(timer);
-    return { result: null, timedOut: true, error: e.message };
-  }
-}
-
-async function testEmployeeQuery() {
-  dbg('TEST START', '#ff0');
-  dbg('TEST: SUPABASE_URL = ' + SUPABASE_URL, '#888');
-  dbg('TEST: cached session exists = ' + (!!_cachedSession), '#888');
-
-  // --- STEP 1: getSession with timeout ---
-  let session = _cachedSession;
-  if (!session) {
-    dbg('TEST: before getSession', '#0ff');
-    try {
-      const { result, timedOut, error } = await withTimeout(
-        sb.auth.getSession(), 5000, 'GETSESSION'
-      );
-      if (timedOut) {
-        dbg('TEST: GETSESSION TIMEOUT — sb.auth.getSession() hung for 5s', '#f00');
-        session = null;
-      } else {
-        dbg('TEST: after getSession', '#0ff');
-        session = result?.data?.session || null;
-        dbg('TEST: session exists = ' + (!!session), session ? '#0f0' : '#f00');
-        if (session) dbg('TEST: access_token exists = ' + (!!session.access_token), '#888');
-      }
-    } catch(e) {
-      dbg('TEST: getSession EXCEPTION: ' + e.message, '#f00');
-    }
-  } else {
-    dbg('TEST: using cached session — skipping getSession', '#0f0');
-    dbg('TEST: access_token exists = ' + (!!session.access_token), '#888');
-  }
-
-  // --- STEP 2: getUser with timeout ---
-  dbg('TEST: before getUser', '#0ff');
-  try {
-    const { result, timedOut, error } = await withTimeout(
-      sb.auth.getUser(), 5000, 'GETUSER'
-    );
-    if (timedOut) {
-      dbg('TEST: GETUSER TIMEOUT — sb.auth.getUser() hung for 5s', '#f00');
-    } else {
-      dbg('TEST: after getUser', '#0ff');
-      dbg('TEST: user email = ' + (result?.data?.user?.email || 'null'), '#888');
-    }
-  } catch(e) {
-    dbg('TEST: getUser EXCEPTION: ' + e.message, '#f00');
-  }
-
-  // --- STEP 3: Client query with timeout ---
-  dbg('TEST: before client query', '#0ff');
-  try {
-    const { result, timedOut, error } = await withTimeout(
-      sb.from('employees').select('id,name,email,role').limit(1),
-      5000, 'CLIENT QUERY'
-    );
-    if (timedOut) {
-      dbg('TEST CLIENT QUERY TIMEOUT — sb.from().select() hung for 5s', '#f00');
-    } else {
-      dbg('TEST: after client query', '#0ff');
-      dbg('TEST CLIENT QUERY DATA: ' + JSON.stringify(result?.data), result?.data ? '#0f0' : '#888');
-      dbg('TEST CLIENT QUERY ERROR: ' + JSON.stringify(result?.error), result?.error ? '#f00' : '#888');
-    }
-  } catch(e) {
-    dbg('TEST CLIENT QUERY EXCEPTION: ' + e.message, '#f00');
-  }
-
-  // --- STEP 4: Raw fetch (no Supabase client) ---
-  if (!session) {
-    dbg('TEST: skipping raw fetch — no session available', '#f00');
-    return;
-  }
-  dbg('TEST: before raw fetch', '#0ff');
-  try {
-    const url = SUPABASE_URL + '/rest/v1/employees?select=id,name,email,role&limit=1';
-    const fetchPromise = fetch(url, {
-      method: 'GET',
-      headers: {
-        'apikey': SUPABASE_KEY,
-        'Authorization': 'Bearer ' + session.access_token,
-        'Accept': 'application/json'
-      }
-    });
-    const { result: res, timedOut } = await withTimeout(fetchPromise, 5000, 'RAW FETCH');
-    if (timedOut) {
-      dbg('TEST RAW FETCH TIMEOUT', '#f00');
-    } else {
-      dbg('TEST: after raw fetch', '#0ff');
-      dbg('TEST RAW FETCH RESPONSE STATUS: ' + res.status, res.ok ? '#0f0' : '#f00');
-      const body = await res.text();
-      dbg('TEST RAW FETCH RESPONSE BODY: ' + body.substring(0, 300), '#0f0');
-    }
-  } catch(e) {
-    dbg('TEST RAW FETCH ERROR: ' + e.message, '#f00');
-  }
-}
-
 async function startApp() {
   try {
-    dbg('   startApp: hiding auth-screen, showing app', '#888');
     document.getElementById('auth-screen').style.display = 'none';
     document.getElementById('app').style.display = 'flex';
-    dbg('   startApp: calling showScreen dashboard', '#888');
     showScreen('dashboard');
     initLanguage();
     applyRolePermissions();
-    dbg('   startApp: loading dashboard data', '#888');
     loadDashboard();
     loadEquipmentOptions();
     loadMechanicsOptions();
     loadEquipmentTypes();
-    dbg('   startApp: all calls made successfully', '#0f0');
   } catch(e) {
-    dbg('EXCEPTION inside startApp: ' + e.message, '#f00');
     throw e;
   }
 }
@@ -1645,82 +1480,66 @@ function initLanguage() {
 let appStarted = false;
 let appStarting = false;
 
-function resetStartupFlags(reason) {
-  dbg('   FLAGS RESET: ' + reason, '#f80');
+function resetStartupFlags() {
   appStarted = false;
   appStarting = false;
 }
 
 sb.auth.onAuthStateChange(async (event, session) => {
-  dbg('4. Auth event received: ' + event + (session ? ' (session exists)' : ' (no session)'), '#0ff');
 
   if (event === 'PASSWORD_RECOVERY') {
-    dbg('   → PASSWORD_RECOVERY: showing reset screen', '#ff0');
     document.getElementById('auth-screen').style.display = 'none';
     document.getElementById('forgot-screen').style.display = 'none';
     document.getElementById('reset-screen').style.display = 'flex';
-    resetStartupFlags('PASSWORD_RECOVERY');
+    resetStartupFlags();
     return;
   }
 
   if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
     if (appStarted) {
-      dbg('   → appStarted=true — already fully started, skipping', '#888');
       return;
     }
     if (appStarting) {
-      dbg('   → appStarting=true — startup in progress, skipping duplicate event', '#888');
       return;
     }
     const resetVisible = document.getElementById('reset-screen').style.display === 'flex';
     if (resetVisible) {
-      dbg('   → reset screen visible — skipping startApp', '#888');
       return;
     }
 
     appStarting = true;
     _cachedSession = session;
-    dbg('   → appStarting set TRUE — session cached', '#ff0');
     currentUser = session.user;
-    dbg('   → proceeding to loadEmployee for: ' + session.user.email, '#0f0');
 
     try {
-      dbg('5. Calling loadEmployee directly (no timeout wrapper)', '#0ff');
       await loadEmployee();
     } catch(e) {
-      dbg('EXCEPTION in loadEmployee: ' + e.message, '#f00');
       const errEl = document.getElementById('auth-error');
       if (errEl) { errEl.textContent = 'Login error: ' + e.message; errEl.style.display = 'block'; }
-      resetStartupFlags('loadEmployee threw');
+      resetStartupFlags();
       return;
     }
 
     if (!currentEmployee) {
-      dbg('6. loadEmployee: NO EMPLOYEE FOUND — resetting flags', '#f00');
-      resetStartupFlags('loadEmployee returned no employee');
+      resetStartupFlags();
       return;
     }
 
-    dbg('6. loadEmployee DONE — name: ' + currentEmployee.name + ', role: ' + currentEmployee.role, '#0f0');
 
     try {
-      dbg('7. Calling startApp…', '#0ff');
       await startApp();
       appStarted = true;
       appStarting = false;
-      dbg('8. startApp completed — appStarted set TRUE ✓', '#0f0');
     } catch(e) {
-      dbg('EXCEPTION in startApp: ' + e.message, '#f00');
       const errEl = document.getElementById('auth-error');
       if (errEl) { errEl.textContent = 'App failed to start: ' + e.message; errEl.style.display = 'block'; }
-      resetStartupFlags('startApp threw');
+      resetStartupFlags();
     }
     return;
   }
 
   if (event === 'SIGNED_OUT') {
-    dbg('   → SIGNED_OUT: returning to login screen', '#ff0');
-    resetStartupFlags('SIGNED_OUT');
+    resetStartupFlags();
     document.getElementById('app').style.display = 'none';
     document.getElementById('auth-screen').style.display = 'flex';
     currentUser = null;
