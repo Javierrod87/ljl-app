@@ -639,6 +639,93 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
   }
 });
 
+// =====================
+// REST API HELPERS — replaces broken sb.from() client
+// Raw fetch works, Supabase JS client does not in this environment
+// =====================
+
+async function restFetch(path, options) {
+  options = options || {};
+  const token = _cachedSession?.access_token || '';
+  const headers = Object.assign({
+    'apikey': SUPABASE_KEY,
+    'Authorization': 'Bearer ' + token,
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+    'Prefer': options.prefer || ''
+  }, options.headers || {});
+  
+  const url = SUPABASE_URL + '/rest/v1/' + path;
+  const res = await fetch(url, {
+    method: options.method || 'GET',
+    headers: headers,
+    body: options.body ? JSON.stringify(options.body) : undefined
+  });
+  
+  if (!res.ok && res.status !== 406) {
+    const errText = await res.text();
+    return { data: null, error: { message: errText, status: res.status } };
+  }
+  
+  const text = await res.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch(e) { data = text; }
+  return { data, error: null };
+}
+
+// Single record helper (returns first item or null)
+async function restFetchOne(path, options) {
+  const { data, error } = await restFetch(path, options);
+  if (error) return { data: null, error };
+  const record = Array.isArray(data) ? (data[0] || null) : data;
+  return { data: record, error: null };
+}
+
+// INSERT helper — returns created record
+async function restInsert(table, body, options) {
+  options = options || {};
+  return await restFetch(table, {
+    method: 'POST',
+    body: body,
+    prefer: 'return=representation',
+    headers: options.headers
+  });
+}
+
+// UPDATE helper
+async function restUpdate(table, body, filter) {
+  return await restFetch(table + '?' + filter, {
+    method: 'PATCH',
+    body: body,
+    prefer: 'return=representation'
+  });
+}
+
+// DELETE helper
+async function restDelete(table, filter) {
+  return await restFetch(table + '?' + filter, { method: 'DELETE' });
+}
+
+// Storage upload helper (keeps using fetch directly)
+async function storageUpload(bucket, path, file) {
+  const token = _cachedSession?.access_token || '';
+  const res = await fetch(SUPABASE_URL + '/storage/v1/object/' + bucket + '/' + path, {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + token,
+      'apikey': SUPABASE_KEY,
+      'x-upsert': 'true'
+    },
+    body: file
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    return { data: null, error: { message: err } };
+  }
+  const publicUrl = SUPABASE_URL + '/storage/v1/object/public/' + bucket + '/' + path;
+  return { data: { publicUrl }, error: null };
+}
+
 // Verify client is functional immediately
 setTimeout(function() {
   try {
@@ -839,23 +926,21 @@ async function handleLogout() {
 
 async function loadEmployee() {
   const uid = currentUser.id;
-  dbg('5a. constructing employee query for uid=' + uid, '#ff0');
-  const query = sb.from('employees').select('id,name,email,role,auth_user_id').eq('auth_user_id', uid).maybeSingle();
-  dbg('5aa. query object constructed — about to await', '#ff0');
-  const { data, error } = await query;
-  dbg('5b. employee query resolved', '#ff0');
-  dbg('5c. data: ' + JSON.stringify(data), data ? '#0f0' : '#888');
-  dbg('5d. error: ' + JSON.stringify(error), error ? '#f00' : '#888');
+  dbg('5a. loadEmployee REST fetch for uid=' + uid, '#ff0');
+  const { data, error } = await restFetchOne(
+    'employees?select=id,name,email,role,auth_user_id&auth_user_id=eq.' + uid
+  );
+  dbg('5b. loadEmployee resolved — data: ' + JSON.stringify(data) + ' error: ' + JSON.stringify(error), data ? '#0f0' : '#f00');
   if (error || !data) {
-    const msg = error ? error.message : 'No row found';
-    dbg('5e. FAILED: ' + msg, '#f00');
+    const msg = error ? error.message : 'No employee row found';
+    dbg('5c. FAILED: ' + msg, '#f00');
     const errEl = document.getElementById('auth-error');
     if (errEl) { errEl.textContent = 'Account not found: ' + msg; errEl.style.display = 'block'; }
     currentEmployee = null;
     return;
   }
   currentEmployee = data;
-  dbg('5f. SUCCESS: ' + data.name + ' / ' + data.role, '#0f0');
+  dbg('5c. SUCCESS: ' + data.name + ' / ' + data.role, '#0f0');
   document.getElementById('topbar-user').textContent = data.name;
 }
 
@@ -1082,11 +1167,11 @@ async function deleteWorkOrder(woId, woNumber) {
   if (!confirm('Delete ' + woNumber + '? This cannot be undone.')) return;
   
   // Delete attachments first
-  await sb.from('work_order_attachments').delete().eq('work_order_id', woId);
+  await restDelete('work_order_attachments', 'work_order_id=eq.' + woId);
   // Delete status history
-  await sb.from('work_order_status_history').delete().eq('work_order_id', woId);
+  await restDelete('work_order_status_history', 'work_order_id=eq.' + woId);
   // Delete work order
-  const { error } = await sb.from('work_orders').delete().eq('id', woId);
+  const { error } = await restDelete('work_orders', 'id=eq.' + woId);
   
   if (error) { showToast('Error deleting work order: ' + error.message); return; }
   
@@ -1104,18 +1189,11 @@ async function uploadEquipPhoto(equipId, input) {
   const fileExt = file.name.split('.').pop();
   const fileName = equipId + '.' + fileExt;
   
-  const { error: uploadError } = await sb.storage
-    .from('equipment-photos')
-    .upload(fileName, file, { upsert: true });
+  const { data: urlData, error: uploadError } = await storageUpload('equipment-photos', fileName, file);
   
   if (uploadError) { showToast('Upload error: ' + uploadError.message); return; }
   
-  const { data: urlData } = sb.storage.from('equipment-photos').getPublicUrl(fileName);
-  
-  const { error: dbError } = await sb.from('equipment').update({ 
-    photo_url: urlData.publicUrl,
-    updated_at: new Date().toISOString()
-  }).eq('id', equipId);
+  const { error: dbError } = await restUpdate('equipment', { photo_url: urlData.publicUrl, updated_at: new Date().toISOString() }, 'id=eq.' + equipId);
   
   if (dbError) { showToast('Error saving photo: ' + dbError.message); return; }
   
@@ -1141,7 +1219,7 @@ async function saveEquipInfo(equipId) {
   if (make !== undefined) updates.make = make || null;
   if (model !== undefined) updates.model = model || null;
 
-  const { error } = await sb.from('equipment').update(updates).eq('id', equipId);
+  const { error } = await restUpdate('equipment', updates, 'id=eq.' + equipId);
   if (error) { showToast('Error saving: ' + error.message); return; }
   showToast('Equipment info saved!');
   openEquipDetail(equipId);
@@ -1153,10 +1231,7 @@ async function updateEquipCategory(equipId) {
   const typeId = select.value;
   const typeName = select.options[select.selectedIndex].text;
   if (!typeId) return;
-  const { error } = await sb.from('equipment').update({ 
-    equipment_type_id: typeId,
-    updated_at: new Date().toISOString()
-  }).eq('id', equipId);
+  const { error } = await restUpdate('equipment', { equipment_type_id: typeId, updated_at: new Date().toISOString() }, 'id=eq.' + equipId);
   if (error) { showToast('Error updating category: ' + error.message); return; }
   showToast('Category updated to ' + typeName);
   openEquipDetail(equipId);
@@ -1165,7 +1240,7 @@ async function updateEquipCategory(equipId) {
 async function loadEquipCategoryDropdown(currentTypeId) {
   const select = document.getElementById('equip-category-select');
   if (!select) return;
-  const { data: types } = await sb.from('equipment_types').select('*').order('name');
+  const { data: types } = await restFetch('equipment_types?select=*&order=name');
   if (!types) return;
   select.innerHTML = types.map(t => 
     `<option value="${t.id}" ${t.id === currentTypeId ? 'selected' : ''}>${t.name}</option>`
@@ -1176,16 +1251,12 @@ async function deleteEquipment(equipId, unitNumber) {
   if (!confirm('Delete ' + unitNumber + '? This will permanently remove the equipment and all its maintenance schedules. Work order history will be preserved.')) return;
 
   // Set as inactive first (soft delete)
-  const { error } = await sb.from('equipment').update({ 
-    is_active: false, 
-    status: 'retired',
-    updated_at: new Date().toISOString() 
-  }).eq('id', equipId);
+  const { error } = await restUpdate('equipment', { is_active: false, status: 'retired', updated_at: new Date().toISOString() }, 'id=eq.' + equipId);
 
   if (error) { showToast('Error deleting equipment: ' + error.message); return; }
   
   // Also deactivate maintenance schedules
-  await sb.from('maintenance_schedules').update({ is_active: false }).eq('equipment_id', equipId);
+  await restUpdate('maintenance_schedules', { is_active: false }, 'equipment_id=eq.' + equipId);
   
   showToast(unitNumber + ' has been removed from the fleet');
   showScreen('equipment');
@@ -1215,16 +1286,7 @@ async function logFreeFormMaintenance(equipId) {
 
   const fullNotes = [notes, shop ? 'By: ' + shop : ''].filter(Boolean).join(' | ');
 
-  const { error } = await sb.from('maintenance_events').insert({
-    equipment_id: equipId,
-    maintenance_schedule_id: null,
-    service_type: serviceType,
-    performed_by_id: currentEmployee?.id,
-    hours_at_service: hours || 0,
-    notes: fullNotes || null,
-    parts_used: parts || null,
-    cost: cost || null
-  });
+  const { error } = await restInsert('maintenance_events', { equipment_id: equipId, service_type: serviceType, performed_by_id: currentEmployee?.id, hours_at_service: parseInt(hours), performed_at: date, notes: notes || null, parts_used: parts || null, cost: cost ? parseFloat(cost) : null, shop_vendor: shop || null });
 
   if (error) { showToast('Error saving: ' + error.message); return; }
 
@@ -1694,8 +1756,8 @@ function showScreen(name) {
 // DASHBOARD
 // =====================
 async function loadDashboard() {
-  const { data: wos } = await sb.from('work_orders').select('*, equipment(unit_number, make, model), assigned_to:employees!work_orders_assigned_to_id_fkey(name)').eq('is_archived', false).not('status', 'in', '("completed","closed")');
-  const { data: schedules } = await sb.from('maintenance_schedules').select('*, equipment(unit_number, current_hours)').eq('is_active', true);
+  const { data: wos } = await restFetch('work_orders?select=*,equipment(unit_number,make,model),assigned_to:employees!work_orders_assigned_to_id_fkey(name)&is_archived=eq.false&status=not.in.(completed,closed)');
+  const { data: schedules } = await restFetch('maintenance_schedules?select=*,equipment(unit_number,current_hours)&is_active=eq.true');
 
   const open = wos?.length || 0;
   const critical = wos?.filter(w => w.priority === 'critical').length || 0;
@@ -1742,7 +1804,7 @@ async function loadDashboard() {
 async function loadWorkOrders() {
   const el = document.getElementById('wo-list');
   el.innerHTML = '<div class="loading">Loading…</div>';
-  const { data } = await sb.from('work_orders').select('*, equipment(unit_number, make, model), submitted_by:employees!work_orders_submitted_by_id_fkey(name), assigned_to:employees!work_orders_assigned_to_id_fkey(name)').eq('is_archived', false).not('status', 'in', '("completed","closed")').order('created_at', { ascending: false });
+  const { data } = await restFetch('work_orders?select=*,equipment(unit_number,make,model),submitted_by:employees!work_orders_submitted_by_id_fkey(name),assigned_to:employees!work_orders_assigned_to_id_fkey(name)&is_archived=eq.false&status=not.in.(completed,closed)&order=created_at.desc');
   allWorkOrders = data || [];
   renderWOList();
 }
@@ -1786,12 +1848,12 @@ async function openWODetail(id) {
   showScreen('wo-detail');
   const el = document.getElementById('wo-detail-content');
   el.innerHTML = '<div class="loading">Loading…</div>';
-  const { data: w } = await sb.from('work_orders').select('*, equipment(id, unit_number, make, model), submitted_by:employees!work_orders_submitted_by_id_fkey(name), assigned_to:employees!work_orders_assigned_to_id_fkey(name)').eq('id', id).single();
-  const { data: hist } = await sb.from('work_order_status_history').select('*, changed_by:employees!work_order_status_history_changed_by_id_fkey(name)').eq('work_order_id', id).order('changed_at', { ascending: false });
+  const { data: w } = await restFetchOne('work_orders?select=*,equipment(id,unit_number,make,model),submitted_by:employees!work_orders_submitted_by_id_fkey(name),assigned_to:employees!work_orders_assigned_to_id_fkey(name)&id=eq.' + id);
+  const { data: hist } = await restFetch('work_order_status_history?select=*,changed_by:employees!work_order_status_history_changed_by_id_fkey(name)&work_order_id=eq.' + id + '&order=changed_at.desc');
   if (!w) { el.innerHTML = '<p>Work order not found.</p>'; return; }
   
   // Load attachments
-  const { data: attachments } = await sb.from('work_order_attachments').select('*').eq('work_order_id', id);
+  const { data: attachments } = await restFetch('work_order_attachments?select=*&work_order_id=eq.' + id);
   const equip = w.equipment ? `${w.equipment.unit_number} — ${w.equipment.make || ''} ${w.equipment.model || ''}`.trim() : 'Unknown';
   const canEdit = currentEmployee && ['admin','manager','foreman','mechanic'].includes(currentEmployee.role);
   el.innerHTML = `
@@ -1888,17 +1950,17 @@ async function applyStatusChange(id) {
 
 async function updateWOStatus(id, newStatus) {
   const oldWO = allWorkOrders.find(w => w.id === id);
-  const { error } = await sb.from('work_orders').update({ status: newStatus, updated_at: new Date().toISOString(), ...(newStatus === 'in_progress' ? { started_at: new Date().toISOString() } : {}), ...(newStatus === 'assigned' ? { assigned_at: new Date().toISOString() } : {}) }).eq('id', id);
+  const { error } = await restUpdate('work_orders', { status: newStatus, updated_at: new Date().toISOString(), ...(newStatus === 'in_progress' ? { started_at: new Date().toISOString() } : {}), ...(newStatus === 'assigned' ? { assigned_at: new Date().toISOString() } : {}) }, 'id=eq.' + id);
   if (error) { showToast('Error updating status'); return; }
-  await sb.from('work_order_status_history').insert({ work_order_id: id, from_status: oldWO?.status, to_status: newStatus, changed_by_id: currentEmployee?.id });
+  await restInsert('work_order_status_history', { work_order_id: id, from_status: oldWO?.status, to_status: newStatus, changed_by_id: currentEmployee?.id });
   showToast('Status updated to ' + formatStatus(newStatus));
   openWODetail(id);
 }
 
 async function reassignWO(id, employeeId) {
   if (!employeeId) return;
-  await sb.from('work_orders').update({ assigned_to_id: employeeId, status: 'assigned', assigned_at: new Date().toISOString() }).eq('id', id);
-  await sb.from('work_order_status_history').insert({ work_order_id: id, from_status: null, to_status: 'assigned', changed_by_id: currentEmployee?.id, note: 'Reassigned' });
+  await restUpdate('work_orders', { assigned_to_id: employeeId, status: 'assigned', assigned_at: new Date().toISOString() }, 'id=eq.' + id);
+  await restInsert('work_order_status_history', { work_order_id: id, from_status: null, to_status: 'assigned', changed_by_id: currentEmployee?.id, note: 'Reassigned' });
   showToast('Work order reassigned');
   openWODetail(id);
 }
@@ -1907,12 +1969,7 @@ async function saveWONotes(id) {
   const notes = document.getElementById('wo-resolution')?.value || '';
   const labor = document.getElementById('wo-labor')?.value || null;
   const parts = document.getElementById('wo-parts-cost')?.value || null;
-  const { error } = await sb.from('work_orders').update({
-    resolution_notes: notes || null,
-    labor_hours: labor ? parseFloat(labor) : null,
-    parts_cost: parts ? parseFloat(parts) : null,
-    updated_at: new Date().toISOString()
-  }).eq('id', id);
+  const { error } = await restUpdate('work_orders', { resolution_notes: notes, labor_hours: labor ? parseFloat(labor) : null, parts_cost: parts ? parseFloat(parts) : null, updated_at: new Date().toISOString() }, 'id=eq.' + id);
   if (error) { showToast('Error saving notes'); return; }
   showToast('Notes saved!');
 }
@@ -1921,16 +1978,16 @@ async function completeWO(id) {
   const notes = document.getElementById('wo-resolution')?.value || '';
   const labor = document.getElementById('wo-labor')?.value || null;
   const parts = document.getElementById('wo-parts-cost')?.value || null;
-  const { error } = await sb.from('work_orders').update({ status: 'completed', completed_at: new Date().toISOString(), resolution_notes: notes, labor_hours: labor ? parseFloat(labor) : null, parts_cost: parts ? parseFloat(parts) : null, updated_at: new Date().toISOString() }).eq('id', id);
+  const { error } = await restUpdate('work_orders', { resolution_notes: notes, labor_hours: labor ? parseFloat(labor) : null, parts_cost: parts ? parseFloat(parts) : null, updated_at: new Date().toISOString() }, 'id=eq.' + id);
   if (error) { showToast('Error completing work order'); return; }
-  await sb.from('work_order_status_history').insert({ work_order_id: id, from_status: 'in_progress', to_status: 'completed', changed_by_id: currentEmployee?.id });
+  await restInsert('work_order_status_history', { work_order_id: id, from_status: 'in_progress', to_status: 'completed', changed_by_id: currentEmployee?.id });
   showToast('Work order marked complete!');
   openWODetail(id);
 }
 
 async function closeWO(id) {
-  await sb.from('work_orders').update({ status: 'closed', closed_at: new Date().toISOString(), is_archived: true, updated_at: new Date().toISOString() }).eq('id', id);
-  await sb.from('work_order_status_history').insert({ work_order_id: id, from_status: 'completed', to_status: 'closed', changed_by_id: currentEmployee?.id });
+  await restUpdate('work_orders', { status: 'closed', closed_at: new Date().toISOString(), is_archived: true, updated_at: new Date().toISOString() }, 'id=eq.' + id);
+  await restInsert('work_order_status_history', { work_order_id: id, from_status: 'completed', to_status: 'closed', changed_by_id: currentEmployee?.id });
   showToast('Work order closed and archived');
   showScreen('workorders');
 }
@@ -1947,10 +2004,11 @@ async function submitWorkOrder() {
   if (!equipId) { showToast('Please select equipment'); return; }
   if (!desc) { showToast('Please enter a description'); return; }
   const insertData = { equipment_id: equipId, description: desc, priority, category, submitted_by_id: currentEmployee?.id, status: assignTo ? 'assigned' : 'new', location: location || null, equipment_hours: hours ? parseFloat(hours) : null, assigned_to_id: assignTo || null, assigned_at: assignTo ? new Date().toISOString() : null, due_date: dueDate || null };
-  const { data, error } = await sb.from('work_orders').insert(insertData).select().single();
+  const { data: woArr, error } = await restInsert('work_orders', insertData);
+  const data = Array.isArray(woArr) ? woArr[0] : woArr;
   if (error) { showToast('Error creating work order: ' + error.message); return; }
-  await sb.from('work_order_status_history').insert({ work_order_id: data.id, to_status: insertData.status, changed_by_id: currentEmployee?.id, note: 'Work order created' });
-  if (hours) { await sb.from('hour_readings').insert({ equipment_id: equipId, hours: parseFloat(hours), submitted_by_id: currentEmployee?.id }); await sb.from('equipment').update({ current_hours: parseFloat(hours) }).eq('id', equipId).lt('current_hours', parseFloat(hours)); }
+  await restInsert('work_order_status_history', { work_order_id: data.id, to_status: insertData.status, changed_by_id: currentEmployee?.id, note: 'Work order created' });
+  if (hours) { await restInsert('hour_readings', { equipment_id: equipId, hours: parseFloat(hours), submitted_by_id: currentEmployee?.id }); await restUpdate('equipment', { current_hours: parseFloat(hours) }, 'id=eq.' + equipId); }
   await uploadPhotos(data.id);
   showToast('Work order created!');
   // Send email notification
@@ -1996,15 +2054,10 @@ async function uploadPhotos(workOrderId) {
   for (const file of input.files) {
     const ext = file.name.split('.').pop();
     const fileName = workOrderId + '/' + Date.now() + '.' + ext;
-    const { data, error } = await sb.storage.from('work-order-photos').upload(fileName, file);
-    if (!error && data) {
-      const { data: urlData } = sb.storage.from('work-order-photos').getPublicUrl(fileName);
-      await sb.from('work_order_attachments').insert({
-        work_order_id: workOrderId,
-        file_url: urlData.publicUrl,
-        file_name: file.name,
-        uploaded_by_id: currentEmployee?.id
-      });
+    const { data: urlData, error } = await storageUpload('work-order-photos', fileName, file);
+    if (!error && urlData) {
+      await restInsert('work_order_attachments', { work_order_id: workOrderId, file_url: urlData.publicUrl, file_name: file.name, uploaded_by_id: currentEmployee?.id, uploaded_at: new Date().toISOString() });
+      await restInsert('work_order_attachments', { work_order_id: workOrderId, file_url: urlData.publicUrl, file_name: file.name, uploaded_by_id: currentEmployee?.id, uploaded_at: new Date().toISOString() });
     }
   }
 }
@@ -2021,7 +2074,7 @@ function resetCreateWOForm() {
 async function loadEquipment() {
   const el = document.getElementById('equip-list');
   el.innerHTML = '<div class="loading">Loading…</div>';
-  const { data } = await sb.from('equipment').select('*, equipment_types(name), photo_url').eq('is_active', true).order('unit_number');
+  const { data } = await restFetch('equipment?select=*,equipment_types(name),photo_url&is_active=eq.true&order=unit_number');
   allEquipment = data || [];
   renderEquipList(allEquipment);
 }
@@ -2054,10 +2107,10 @@ async function openEquipDetail(id) {
   showScreen('equip-detail');
   const el = document.getElementById('equip-detail-content');
   el.innerHTML = '<div class="loading">Loading…</div>';
-  const { data: e } = await sb.from('equipment').select('*, equipment_types(name)').eq('id', id).single();
-  const { data: schedules } = await sb.from('maintenance_schedules').select('*, hrs_per_day, days_per_week').eq('equipment_id', id).eq('is_active', true).order('service_type');
-  const { data: wos } = await sb.from('work_orders').select('*, submitted_by:employees!work_orders_submitted_by_id_fkey(name), assigned_to:employees!work_orders_assigned_to_id_fkey(name)').eq('equipment_id', id).eq('is_archived', true).order('completed_at', { ascending: false }).limit(10);
-  const { data: maintEvents } = await sb.from('maintenance_events').select('*, performed_by:employees!maintenance_events_performed_by_id_fkey(name)').eq('equipment_id', id).order('performed_at', { ascending: false }).limit(10);
+  const { data: e } = await restFetchOne('equipment?select=*,equipment_types(name)&id=eq.' + id);
+  const { data: schedules } = await restFetch('maintenance_schedules?select=*,hrs_per_day,days_per_week&equipment_id=eq.' + id + '&is_active=eq.true&order=service_type');
+  const { data: wos } = await restFetch('work_orders?select=*,submitted_by:employees!work_orders_submitted_by_id_fkey(name),assigned_to:employees!work_orders_assigned_to_id_fkey(name)&equipment_id=eq.' + id + '&is_archived=eq.true&order=completed_at.desc&limit=10');
+  const { data: maintEvents } = await restFetch('maintenance_events?select=*,performed_by:employees!maintenance_events_performed_by_id_fkey(name)&equipment_id=eq.' + id + '&order=performed_at.desc&limit=10');
   if (!e) { el.innerHTML = '<p>Equipment not found.</p>'; return; }
   const alerts = getEquipAlertStatus(e, schedules);
   el.innerHTML = `
@@ -2229,10 +2282,10 @@ async function submitHours(equipId) {
   const input = document.getElementById('new-hours-' + equipId);
   const newHours = parseFloat(input?.value);
   if (!newHours || isNaN(newHours)) { showToast('Please enter valid hours'); return; }
-  const { data: equip } = await sb.from('equipment').select('current_hours').eq('id', equipId).single();
+  const { data: equip } = await restFetchOne('equipment?select=current_hours&id=eq.' + equipId);
   if (newHours < parseFloat(equip?.current_hours || 0)) { showToast('Hours cannot go backwards'); return; }
-  await sb.from('hour_readings').insert({ equipment_id: equipId, hours: newHours, submitted_by_id: currentEmployee?.id });
-  await sb.from('equipment').update({ current_hours: newHours, updated_at: new Date().toISOString() }).eq('id', equipId);
+  await restInsert('hour_readings', { equipment_id: equipId, hours: newHours, submitted_by_id: currentEmployee?.id });
+  await restUpdate('equipment', { current_hours: newHours, updated_at: new Date().toISOString() }, 'id=eq.' + equipId);
   showToast('Hours updated to ' + newHours);
   openEquipDetail(equipId);
 }
@@ -2246,11 +2299,11 @@ async function logMaintenance(equipId) {
   const shop = document.getElementById('log-maint-shop-' + equipId)?.value.trim() || '';
   const fullNotes = [notes, shop ? 'Shop: ' + shop : ''].filter(Boolean).join(' | ');
   if (!hours) { showToast('Please enter hours at service'); return; }
-  const { data: schedule } = await sb.from('maintenance_schedules').select('*').eq('id', scheduleId).single();
+  const { data: schedule } = await restFetchOne('maintenance_schedules?select=*&id=eq.' + scheduleId);
   if (!schedule) { showToast('Schedule not found'); return; }
-  await sb.from('maintenance_events').insert({ equipment_id: equipId, maintenance_schedule_id: scheduleId, service_type: schedule.service_type, performed_by_id: currentEmployee?.id, hours_at_service: hours, notes: fullNotes, parts_used: parts, cost: totalCost || null });
+  await restInsert('maintenance_events', { equipment_id: equipId, maintenance_schedule_id: scheduleId, service_type: schedule.service_type, performed_by_id: currentEmployee?.id, hours_at_service: hours, notes: fullNotes, parts_used: parts, cost: totalCost || null });
   const nextDue = hours + parseFloat(schedule.interval_hours);
-  await sb.from('maintenance_schedules').update({ last_service_hours: hours, next_due_hours: nextDue, updated_at: new Date().toISOString() }).eq('id', scheduleId);
+  await restUpdate('maintenance_schedules', { last_service_hours: hours, next_due_hours: nextDue, updated_at: new Date().toISOString() }, 'id=eq.' + scheduleId);
   showToast('Maintenance logged! Next due: ' + nextDue + ' hrs');
   openEquipDetail(equipId);
 }
@@ -2288,7 +2341,7 @@ async function saveNewMaintSchedule(equipId) {
   const daysPerWeek = parseFloat(document.getElementById('ms-days-week').value || 5);
   if (!serviceType || !interval) { showToast('Please fill in service type and interval'); return; }
   const nextDue = lastHours + interval;
-  await sb.from('maintenance_schedules').insert({ equipment_id: equipId, service_type: serviceType, interval_hours: interval, alert_threshold_hours: threshold, last_service_hours: lastHours, next_due_hours: nextDue, hrs_per_day: hrsPerDay, days_per_week: daysPerWeek });
+  await restInsert('maintenance_schedules', { equipment_id: equipId, service_type: serviceType, interval_hours: interval, alert_threshold_hours: threshold, last_service_hours: lastHours, next_due_hours: nextDue, hrs_per_day: hrsPerDay, days_per_week: daysPerWeek });
   document.querySelector('.modal-overlay')?.remove();
   showToast('Schedule added!');
   openEquipDetail(equipId);
@@ -2300,7 +2353,7 @@ async function saveNewMaintSchedule(equipId) {
 async function loadAlerts() {
   const el = document.getElementById('alerts-list');
   el.innerHTML = '<div class="loading">Loading…</div>';
-  const { data: schedules } = await sb.from('maintenance_schedules').select('*, equipment(unit_number, make, model, current_hours)').eq('is_active', true);
+  const { data: schedules } = await restFetch('maintenance_schedules?select=*,equipment(unit_number,make,model,current_hours)&is_active=eq.true');
   const overdue = [], soon = [];
   schedules?.forEach(s => {
     const hrs = parseFloat(s.equipment?.current_hours || 0);
@@ -2352,9 +2405,7 @@ function renderAlertItem(s) {
 // ALERT DETAIL MODAL
 // =====================
 async function openAlertDetail(scheduleId, equipmentId) {
-  const { data: s } = await sb.from('maintenance_schedules')
-    .select('*, equipment(id, unit_number, make, model, current_hours)')
-    .eq('id', scheduleId).single();
+  const { data: s } = await restFetchOne('maintenance_schedules?select=*,equipment(id,unit_number,make,model,current_hours)&id=eq.' + scheduleId);
   if (!s) return;
 
   const hrs = parseFloat(s.equipment?.current_hours || 0);
@@ -2405,15 +2456,11 @@ async function openAlertDetail(scheduleId, equipmentId) {
 }
 
 async function markAlertComplete(scheduleId, currentHours, overlay) {
-  const { data: s } = await sb.from('maintenance_schedules').select('*').eq('id', scheduleId).single();
+  const { data: s } = await restFetchOne('maintenance_schedules?select=*&id=eq.' + scheduleId);
   if (!s) return;
 
   const nextDue = currentHours + parseFloat(s.interval_hours);
-  const { error } = await sb.from('maintenance_schedules').update({
-    last_performed_hours: currentHours,
-    next_due_hours: nextDue,
-    updated_at: new Date().toISOString()
-  }).eq('id', scheduleId);
+  const { error } = await restUpdate('maintenance_schedules', { last_performed_hours: currentHours, next_due_hours: nextDue, updated_at: new Date().toISOString() }, 'id=eq.' + scheduleId);
 
   if (error) { showToast('Error: ' + error.message); return; }
 
@@ -2424,7 +2471,7 @@ async function markAlertComplete(scheduleId, currentHours, overlay) {
 
 async function deleteAlert(scheduleId, overlay) {
   if (!confirm('Delete this maintenance schedule? This cannot be undone.')) return;
-  const { error } = await sb.from('maintenance_schedules').delete().eq('id', scheduleId);
+  const { error } = await restDelete('maintenance_schedules', 'id=eq.' + scheduleId);
   if (error) { showToast('Error: ' + error.message); return; }
   if (overlay) overlay.remove();
   showToast('Maintenance schedule deleted');
@@ -2445,7 +2492,7 @@ function adminTab(tab, el) {
 async function loadAdminEmployees() {
   const el = document.getElementById('admin-emp-list');
   el.innerHTML = '<div class="loading">Loading…</div>';
-  const { data } = await sb.from('employees').select('*').eq('is_active', true).order('name');
+  const { data } = await restFetch('employees?select=*&is_active=eq.true&order=name');
   if (!data || data.length === 0) { el.innerHTML = '<div class="empty-state"><p>No employees yet. Add your first employee.</p></div>'; return; }
   el.innerHTML = data.map(emp => {
     const isMe = emp.email === currentEmployee?.email;
@@ -2505,7 +2552,7 @@ async function adminResetPassword(employeeId, name, email) {
 
 async function deleteEmployee(employeeId, name) {
   if (!confirm('Remove ' + name + ' from the app? They will no longer be able to log in.')) return;
-  const { error } = await sb.from('employees').update({ is_active: false }).eq('id', employeeId);
+  const { error } = await restUpdate('employees', { is_active: false }, 'id=eq.' + employeeId);
   if (error) { showToast('Error removing employee'); return; }
   showToast(name + ' has been removed');
   loadAdminEmployees();
@@ -2519,10 +2566,10 @@ async function createEmployee() {
   if (!name || !email || !password) { showToast('Please fill in all fields'); return; }
 
   // Check if employee already exists but is inactive
-  const { data: existing } = await sb.from('employees').select('id, is_active').eq('email', email).single();
+  const { data: existing } = await restFetchOne('employees?select=id,is_active&email=eq.' + encodeURIComponent(email));
   if (existing) {
     // Reactivate existing employee
-    await sb.from('employees').update({ is_active: true, name, role }).eq('email', email);
+    await restUpdate('employees', { is_active: true, name, role }, 'email=eq.' + encodeURIComponent(email));
     document.querySelector('.modal-overlay')?.remove();
     showToast('Employee account reactivated!');
     loadAdminEmployees();
@@ -2533,7 +2580,7 @@ async function createEmployee() {
   const { data, error } = await sb.auth.signUp({ email, password });
   if (error) { showToast('Error: ' + error.message); return; }
   if (data.user) {
-    await sb.from('employees').insert({ auth_user_id: data.user.id, name, email, role });
+    await restInsert('employees', { auth_user_id: data.user.id, name, email, role });
   }
   document.querySelector('.modal-overlay')?.remove();
   showToast('Employee account created!');
@@ -2550,7 +2597,8 @@ async function submitEquipment() {
   const serial = document.getElementById('eq-serial').value.trim();
   const location = document.getElementById('eq-location').value.trim();
   if (!unitNumber || !typeId) { showToast('Unit number and type are required'); return; }
-  const { data: equip, error } = await sb.from('equipment').insert({ unit_number: unitNumber, equipment_type_id: typeId, make: make || null, model: model || null, year: year ? parseInt(year) : null, current_hours: hours ? parseFloat(hours) : 0, serial_number: serial || null, location: location || null }).select().single();
+  const { data: equipArr, error } = await restInsert('equipment', { unit_number: unitNumber, equipment_type_id: typeId, make: make || null, model: model || null, year: year ? parseInt(year) : null, current_hours: hours ? parseFloat(hours) : 0, serial_number: serial || null, location: location || null });
+  const equip = Array.isArray(equipArr) ? equipArr[0] : equipArr;
   if (error) { showToast('Error: ' + (error.message.includes('unique') ? 'Unit number already exists' : error.message)); return; }
   const scheduleRows = document.querySelectorAll('.schedule-row');
   for (const row of scheduleRows) {
@@ -2559,7 +2607,7 @@ async function submitEquipment() {
     const threshold = parseFloat(row.querySelector('.sr-threshold').value || 20);
     if (type && interval) {
       const lastHrs = parseFloat(hours || 0);
-      await sb.from('maintenance_schedules').insert({ equipment_id: equip.id, service_type: type, interval_hours: interval, alert_threshold_hours: threshold, last_service_hours: lastHrs, next_due_hours: lastHrs + interval });
+      await restInsert('maintenance_schedules', { equipment_id: equip.id, service_type: type, interval_hours: interval, alert_threshold_hours: threshold, last_service_hours: lastHrs, next_due_hours: lastHrs + interval });
     }
   }
   showToast('Equipment added!');
@@ -2589,25 +2637,25 @@ function addScheduleRow() {
 // HELPERS / OPTIONS
 // =====================
 async function loadEquipmentOptions() {
-  const { data } = await sb.from('equipment').select('id, unit_number, make, model').eq('is_active', true).order('unit_number');
+  const { data } = await restFetch('equipment?select=id,unit_number,make,model&is_active=eq.true&order=unit_number');
   const sel = document.getElementById('wo-equipment');
   if (sel) { sel.innerHTML = '<option value="">Select equipment…</option>' + (data || []).map(e => `<option value="${e.id}">${e.unit_number} — ${e.make || ''} ${e.model || ''}</option>`).join(''); }
 }
 
 async function loadMechanicsOptions() {
-  const { data } = await sb.from('employees').select('id, name, role').eq('is_active', true).in('role', ['mechanic','foreman','manager','admin']);
+  const { data } = await restFetch('employees?select=id,name,role&is_active=eq.true&role=in.(mechanic,foreman,manager,admin)');
   const sel = document.getElementById('wo-assign');
   if (sel) { sel.innerHTML = '<option value="">Unassigned</option>' + (data || []).map(e => `<option value="${e.id}">${e.name} (${e.role})</option>`).join(''); }
 }
 
 async function loadMechanicsIntoSelect(selId, currentId) {
-  const { data } = await sb.from('employees').select('id, name, role').eq('is_active', true).in('role', ['mechanic','foreman','manager','admin']);
+  const { data } = await restFetch('employees?select=id,name,role&is_active=eq.true&role=in.(mechanic,foreman,manager,admin)');
   const sel = document.getElementById(selId);
   if (sel) { sel.innerHTML = '<option value="">— keep current —</option>' + (data || []).map(e => `<option value="${e.id}" ${e.id === currentId ? 'selected' : ''}>${e.name} (${e.role})</option>`).join(''); }
 }
 
 async function loadEquipmentTypes() {
-  const { data } = await sb.from('equipment_types').select('*').order('name');
+  const { data } = await restFetch('equipment_types?select=*&order=name');
   const sel = document.getElementById('eq-type');
   if (sel) { sel.innerHTML = '<option value="">Select type…</option>' + (data || []).map(t => `<option value="${t.id}">${t.name}</option>`).join(''); }
 }
