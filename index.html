@@ -258,6 +258,10 @@
     <span style="color:#ff0;font-weight:bold">DEBUG v2.0 — LJL Auth Flow</span>
     <button onclick="document.getElementById('debug-panel').style.display='none'" style="background:#333;color:#fff;border:none;padding:2px 8px;cursor:pointer;font-size:10px">Hide</button>
   </div>
+  <div style="margin-bottom:4px">
+    <button onclick="testEmployeeQuery()" style="background:#333;color:#ff0;border:1px solid #ff0;padding:3px 10px;cursor:pointer;font-size:10px;font-family:monospace">▶ Test Employee Query</button>
+    <button onclick="document.getElementById('debug-log').innerHTML=''" style="background:#333;color:#888;border:1px solid #555;padding:3px 10px;cursor:pointer;font-size:10px;font-family:monospace">Clear</button>
+  </div>
   <div id="debug-log"></div>
 </div>
 
@@ -816,30 +820,36 @@ async function handleLogout() {
 }
 
 async function loadEmployee() {
-  dbg('5a. about to await employee query (auth_user_id=' + currentUser.id + ')', '#ff0');
-
-  const { data, error } = await sb
-    .from('employees')
-    .select('id, name, email, role, auth_user_id')
-    .eq('auth_user_id', currentUser.id)
-    .maybeSingle();
-
+  const uid = currentUser.id;
+  dbg('5a. constructing employee query for uid=' + uid, '#ff0');
+  const query = sb.from('employees').select('id,name,email,role,auth_user_id').eq('auth_user_id', uid).maybeSingle();
+  dbg('5aa. query object constructed — about to await', '#ff0');
+  const { data, error } = await query;
   dbg('5b. employee query resolved', '#ff0');
-  dbg('5c. employee query data: ' + JSON.stringify(data), '#0f0');
-  dbg('5d. employee query error: ' + JSON.stringify(error), error ? '#f00' : '#888');
-
+  dbg('5c. data: ' + JSON.stringify(data), data ? '#0f0' : '#888');
+  dbg('5d. error: ' + JSON.stringify(error), error ? '#f00' : '#888');
   if (error || !data) {
-    const msg = error ? error.message : 'No employee row found';
-    dbg('5e. loadEmployee FAILED: ' + msg, '#f00');
+    const msg = error ? error.message : 'No row found';
+    dbg('5e. FAILED: ' + msg, '#f00');
     const errEl = document.getElementById('auth-error');
     if (errEl) { errEl.textContent = 'Account not found: ' + msg; errEl.style.display = 'block'; }
     currentEmployee = null;
     return;
   }
-
   currentEmployee = data;
-  dbg('5f. loadEmployee SUCCESS: ' + data.name + ' / ' + data.role, '#0f0');
+  dbg('5f. SUCCESS: ' + data.name + ' / ' + data.role, '#0f0');
   document.getElementById('topbar-user').textContent = data.name;
+}
+
+// Standalone test function — tap button to run outside auth flow
+async function testEmployeeQuery() {
+  dbg('TEST: running standalone employee query', '#ff0');
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { dbg('TEST: no session — log in first', '#f00'); return; }
+  dbg('TEST: session uid = ' + session.user.id, '#888');
+  const { data, error } = await sb.from('employees').select('id,name,email,role').eq('auth_user_id', session.user.id).maybeSingle();
+  dbg('TEST: data = ' + JSON.stringify(data), data ? '#0f0' : '#888');
+  dbg('TEST: error = ' + JSON.stringify(error), error ? '#f00' : '#888');
 }
 
 async function startApp() {
@@ -1492,19 +1502,14 @@ sb.auth.onAuthStateChange(async (event, session) => {
     currentUser = session.user;
     dbg('   → proceeding to loadEmployee for: ' + session.user.email, '#0f0');
 
-    // loadEmployee with timeout guard
     try {
-      dbg('5. Calling loadEmployee… (10s timeout)', '#0ff');
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('loadEmployee timed out after 10s')), 10000)
-      );
-      await Promise.race([loadEmployee(), timeoutPromise]);
+      dbg('5. Calling loadEmployee directly (no timeout wrapper)', '#0ff');
+      await loadEmployee();
     } catch(e) {
-      dbg('EXCEPTION/TIMEOUT in loadEmployee: ' + e.message, '#f00');
+      dbg('EXCEPTION in loadEmployee: ' + e.message, '#f00');
       const errEl = document.getElementById('auth-error');
       if (errEl) { errEl.textContent = 'Login error: ' + e.message; errEl.style.display = 'block'; }
-      resetStartupFlags('loadEmployee threw/timed out');
-      await sb.auth.signOut();
+      resetStartupFlags('loadEmployee threw');
       return;
     }
 
