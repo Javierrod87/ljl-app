@@ -1889,17 +1889,19 @@ async function submitWorkOrder() {
 }
 
 function previewPhotos(input) {
+  // Rebuild preview from BOTH inputs combined
   const preview = document.getElementById('photo-preview');
-  // Show previews from this input, keep any existing ones
+  if (!preview) return;
   preview.innerHTML = '';
-  const files = Array.from(input.files);
-  files.forEach((file, i) => {
+  const cam = document.getElementById('wo-photos-camera');
+  const lib = document.getElementById('wo-photos-library');
+  const allFiles = [...(cam?.files || []), ...(lib?.files || [])];
+  allFiles.forEach((file, i) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       const div = document.createElement('div');
       div.style.cssText = 'position:relative;width:80px;height:80px';
-      div.innerHTML = '<img src="'+e.target.result+'" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">' +
-        '<button onclick="removePhoto('+i+')" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:#b91c1c;color:white;border:none;cursor:pointer;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center">×</button>';
+      div.innerHTML = '<img src="'+e.target.result+'" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">';
       preview.appendChild(div);
     };
     reader.readAsDataURL(file);
@@ -1907,11 +1909,13 @@ function previewPhotos(input) {
 }
 
 function removePhoto(index) {
-  const input = document.getElementById('wo-photos');
-  const dt = new DataTransfer();
-  Array.from(input.files).forEach((file, i) => { if (i !== index) dt.items.add(file); });
-  input.files = dt.files;
-  previewPhotos(input);
+  // Clear both inputs and preview (simplest safe reset)
+  const cam = document.getElementById('wo-photos-camera');
+  const lib = document.getElementById('wo-photos-library');
+  if (cam) cam.value = '';
+  if (lib) lib.value = '';
+  const preview = document.getElementById('photo-preview');
+  if (preview) preview.innerHTML = '';
 }
 
 async function uploadPhotos(workOrderId) {
@@ -2008,6 +2012,15 @@ async function openEquipDetail(id) {
         <div class="info-row"><span class="info-label">Location</span><span class="info-value">${e.location || '—'}</span></div>
         <div class="info-row"><span class="info-label">Current hours</span><span class="info-value" style="color:var(--blue);font-weight:700">${e.current_hours || 0} hrs</span></div>
         ${e.photo_url ? `<img src="${e.photo_url}" style="width:100%;max-height:180px;object-fit:cover;border-radius:8px;border:1px solid var(--border);margin-top:10px">` : ''}
+        ${currentEmployee && ['admin','manager'].includes(currentEmployee.role) ? `
+        <div style="margin-top:10px">
+          <input type="file" id="equip-photo-camera-read" accept="image/*" capture="environment" style="display:none" onchange="uploadEquipPhoto('${e.id}', this)">
+          <input type="file" id="equip-photo-library-read" accept="image/*" style="display:none" onchange="uploadEquipPhoto('${e.id}', this)">
+          <div style="display:flex;gap:8px">
+            <button onclick="document.getElementById('equip-photo-camera-read').click()" style="flex:1;padding:8px;background:var(--gray-light);color:var(--text);border:1px dashed var(--border);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">📷 Take Photo</button>
+            <button onclick="document.getElementById('equip-photo-library-read').click()" style="flex:1;padding:8px;background:var(--gray-light);color:var(--text);border:1px dashed var(--border);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">🖼 Choose from Library</button>
+          </div>
+        </div>` : ''}
       </div>
 
       <!-- EDIT MODE (hidden by default) -->
