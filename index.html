@@ -859,31 +859,47 @@ async function loadEmployee() {
   document.getElementById('topbar-user').textContent = data.name;
 }
 
-// Standalone test function — tap button to run outside auth flow
 async function testEmployeeQuery() {
-  dbg('TEST: typeof sb = ' + typeof sb, '#ff0');
-  dbg('TEST: typeof sb.from = ' + typeof sb.from, '#ff0');
+  dbg('TEST START', '#ff0');
+  dbg('TEST: SUPABASE_URL = ' + SUPABASE_URL, '#888');
 
-  const { data: { session } } = await sb.auth.getSession();
-  if (!session) { dbg('TEST: no session — log in first', '#f00'); return; }
-  dbg('TEST: uid = ' + session.user.id, '#888');
+  // Get session
+  const sessionRes = await sb.auth.getSession();
+  const session = sessionRes.data.session;
+  if (!session) { dbg('TEST: NO SESSION — log in first', '#f00'); return; }
+  dbg('TEST: session.access_token exists = ' + (!!session.access_token), '#888');
 
-  dbg('TEST: dispatching sb.from query now...', '#0ff');
-  const { data, error } = await sb.from('employees').select('id,name,email,role').limit(1);
-  dbg('TEST: data = ' + JSON.stringify(data), data ? '#0f0' : '#888');
-  dbg('TEST: error = ' + JSON.stringify(error), error ? '#f00' : '#888');
-
-  // Also test raw fetch to same endpoint
-  dbg('TEST: trying raw fetch to /rest/v1/employees...', '#0ff');
+  // --- TEST A: Supabase client query ---
   try {
-    const res = await fetch(
-      'https://fahkluyuvgxhmpdkvrcr.supabase.co/rest/v1/employees?select=id,name&limit=1',
-      { headers: { 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZhaGtsdXl1dmd4aG1wZGt2cmNyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwNTUwMjAsImV4cCI6MjA5MDYzMTAyMH0.5ALFe-1xuwKUvlKDykngVQK1vbLRCKbsnU3KiAus46o', 'Authorization': 'Bearer ' + session.access_token } }
-    );
-    const json = await res.json();
-    dbg('TEST: raw fetch result: ' + JSON.stringify(json), '#0f0');
+    dbg('TEST CLIENT QUERY START', '#0ff');
+    const { data, error } = await sb
+      .from('employees')
+      .select('id,name,email,role,auth_user_id')
+      .limit(1);
+    dbg('TEST CLIENT QUERY RESOLVED', '#0ff');
+    dbg('TEST CLIENT QUERY DATA: ' + JSON.stringify(data), data ? '#0f0' : '#888');
+    dbg('TEST CLIENT QUERY ERROR: ' + JSON.stringify(error), error ? '#f00' : '#888');
   } catch(e) {
-    dbg('TEST: raw fetch error: ' + e.message, '#f00');
+    dbg('TEST CLIENT QUERY EXCEPTION: ' + e.message, '#f00');
+  }
+
+  // --- TEST B: Raw fetch ---
+  try {
+    dbg('TEST RAW FETCH START', '#0ff');
+    const url = SUPABASE_URL + '/rest/v1/employees?select=id,name,email,role,auth_user_id&limit=1';
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': 'Bearer ' + session.access_token,
+        'Accept': 'application/json'
+      }
+    });
+    dbg('TEST RAW FETCH RESPONSE STATUS: ' + res.status, res.ok ? '#0f0' : '#f00');
+    const body = await res.text();
+    dbg('TEST RAW FETCH RESPONSE BODY: ' + body.substring(0, 200), '#0f0');
+  } catch(e) {
+    dbg('TEST RAW FETCH ERROR: ' + e.message, '#f00');
   }
 }
 
