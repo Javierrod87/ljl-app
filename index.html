@@ -657,10 +657,26 @@ async function handleForgotPassword() {
   var email = document.getElementById('forgot-email').value.trim();
   var errEl = document.getElementById('forgot-error');
   errEl.style.display = 'none';
-  if (!email) { errEl.textContent = 'Please enter your email address.'; errEl.style.display = 'block'; return; }
-  var result = await sb.auth.resetPasswordForEmail(email, { redirectTo: 'https://javierrod87.github.io/ljl-app' });
-  if (result.error) { errEl.textContent = 'Error: ' + result.error.message; errEl.style.display = 'block'; return; }
+
+  if (!email) {
+    errEl.textContent = 'Please enter your email address.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  // Show loading state
+  var btn = document.querySelector('#forgot-screen button[onclick]');
+  if (btn) { btn.textContent = 'Sending…'; btn.disabled = true; }
+
+  const { error } = await sb.auth.resetPasswordForEmail(email, {
+    redirectTo: 'https://javierrod87.github.io/ljl-app/'
+  });
+
+  if (btn) { btn.textContent = 'Send Reset Link'; btn.disabled = false; }
+
+  // Always show success (prevent user enumeration)
   document.getElementById('forgot-success').style.display = 'block';
+  if (error) console.log('Reset error (not shown to user):', error.message);
 }
 
 async function handlePasswordReset() {
@@ -668,18 +684,57 @@ async function handlePasswordReset() {
   var confirm = document.getElementById('reset-password-confirm').value;
   var errEl = document.getElementById('reset-error');
   errEl.style.display = 'none';
-  if (!password || !confirm) { errEl.textContent = 'Please enter and confirm your new password.'; errEl.style.display = 'block'; return; }
-  if (password !== confirm) { errEl.textContent = 'Passwords do not match.'; errEl.style.display = 'block'; return; }
-  if (password.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; errEl.style.display = 'block'; return; }
-  var result = await sb.auth.updateUser({ password: password });
-  if (result.error) { errEl.textContent = 'Error: ' + result.error.message; errEl.style.display = 'block'; return; }
+
+  if (!password || !confirm) {
+    errEl.textContent = 'Please enter and confirm your new password.';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (password !== confirm) {
+    errEl.textContent = 'Passwords do not match.';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (password.length < 8) {
+    errEl.textContent = 'Password must be at least 8 characters.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  // Check we have a valid session before trying to update
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) {
+    errEl.textContent = 'This reset link has expired. Please request a new one.';
+    errEl.style.display = 'block';
+    setTimeout(function() {
+      document.getElementById('reset-screen').style.display = 'none';
+      document.getElementById('forgot-screen').style.display = 'flex';
+    }, 2000);
+    return;
+  }
+
+  const { error } = await sb.auth.updateUser({ password: password });
+  if (error) {
+    if (error.message.includes('expired') || error.message.includes('invalid')) {
+      errEl.textContent = 'This reset link has expired. Please request a new one.';
+    } else {
+      errEl.textContent = 'Error: ' + error.message;
+    }
+    errEl.style.display = 'block';
+    return;
+  }
+
   document.getElementById('reset-success').style.display = 'block';
   setTimeout(async function() {
     await sb.auth.signOut();
+    currentUser = null;
+    currentEmployee = null;
     document.getElementById('reset-screen').style.display = 'none';
+    document.getElementById('reset-password').value = '';
+    document.getElementById('reset-password-confirm').value = '';
+    document.getElementById('reset-success').style.display = 'none';
     document.getElementById('auth-screen').style.display = 'flex';
-    currentUser = null; currentEmployee = null;
-  }, 3000);
+  }, 2500);
 }
 
 async function handleLogin() {
@@ -1313,36 +1368,49 @@ function initLanguage() {
   applyTranslations();
 }
 
-// Check for password reset token in URL
-(async function() {
-  try {
-    const hashParams = new URLSearchParams(window.location.hash.replace('#', ''));
-    const accessToken = hashParams.get('access_token');
-    const tokenType = hashParams.get('type');
+// Auth state listener — handles normal login AND password reset links
+// This fires for all auth events including when a reset link is clicked
+sb.auth.onAuthStateChange(async (event, session) => {
+  console.log('Auth event:', event);
 
-    if (accessToken && tokenType === 'recovery') {
-      const { error } = await sb.auth.setSession({ 
-        access_token: accessToken, 
-        refresh_token: hashParams.get('refresh_token') || '' 
-      });
-      if (!error) {
-        document.getElementById('auth-screen').style.display = 'none';
-        document.getElementById('reset-screen').style.display = 'flex';
-        window.location.hash = '';
-        return;
-      }
-    }
-  } catch(e) {
-    console.log('Hash check error:', e);
+  if (event === 'PASSWORD_RECOVERY') {
+    // User clicked a reset link — show the set new password screen
+    document.getElementById('auth-screen').style.display = 'none';
+    document.getElementById('forgot-screen').style.display = 'none';
+    document.getElementById('reset-screen').style.display = 'flex';
+    return;
   }
 
-  sb.auth.getSession().then(({ data: { session } }) => {
-    if (session) {
+  if (event === 'SIGNED_IN' && session) {
+    // Check if we're already on the reset screen (don't redirect away)
+    const resetVisible = document.getElementById('reset-screen').style.display === 'flex';
+    if (resetVisible) return;
+
+    currentUser = session.user;
+    await loadEmployee();
+    startApp();
+    return;
+  }
+
+  if (event === 'SIGNED_OUT') {
+    document.getElementById('app').style.display = 'none';
+    document.getElementById('auth-screen').style.display = 'flex';
+    currentUser = null;
+    currentEmployee = null;
+  }
+});
+
+// Also check for existing session on page load (for returning users)
+sb.auth.getSession().then(({ data: { session } }) => {
+  if (session && session.user) {
+    // Only auto-login if not in a reset flow
+    const hash = window.location.hash;
+    if (!hash.includes('type=recovery') && !hash.includes('access_token')) {
       currentUser = session.user;
       loadEmployee().then(() => startApp());
     }
-  });
-})();
+  }
+});
 
 // =====================
 // NAVIGATION
@@ -2257,4 +2325,123 @@ async function submitEquipment() {
   const typeId = document.getElementById('eq-type').value;
   const make = document.getElementById('eq-make').value.trim();
   const model = document.getElementById('eq-model').value.trim();
-  const year = document.getElement
+  const year = document.getElementById('eq-year').value;
+  const hours = document.getElementById('eq-hours').value;
+  const serial = document.getElementById('eq-serial').value.trim();
+  const location = document.getElementById('eq-location').value.trim();
+  if (!unitNumber || !typeId) { showToast('Unit number and type are required'); return; }
+  const { data: equip, error } = await sb.from('equipment').insert({ unit_number: unitNumber, equipment_type_id: typeId, make: make || null, model: model || null, year: year ? parseInt(year) : null, current_hours: hours ? parseFloat(hours) : 0, serial_number: serial || null, location: location || null }).select().single();
+  if (error) { showToast('Error: ' + (error.message.includes('unique') ? 'Unit number already exists' : error.message)); return; }
+  const scheduleRows = document.querySelectorAll('.schedule-row');
+  for (const row of scheduleRows) {
+    const type = row.querySelector('.sr-type').value.trim();
+    const interval = parseFloat(row.querySelector('.sr-interval').value);
+    const threshold = parseFloat(row.querySelector('.sr-threshold').value || 20);
+    if (type && interval) {
+      const lastHrs = parseFloat(hours || 0);
+      await sb.from('maintenance_schedules').insert({ equipment_id: equip.id, service_type: type, interval_hours: interval, alert_threshold_hours: threshold, last_service_hours: lastHrs, next_due_hours: lastHrs + interval });
+    }
+  }
+  showToast('Equipment added!');
+  ['eq-unit','eq-make','eq-model','eq-year','eq-hours','eq-serial','eq-location'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+  document.getElementById('maint-schedule-builder').innerHTML = '';
+  scheduleRowCount = 0;
+  loadEquipmentOptions();
+}
+
+function addScheduleRow() {
+  scheduleRowCount++;
+  const div = document.createElement('div');
+  div.className = 'schedule-row';
+  div.style.cssText = 'background:var(--gray-light);border-radius:8px;padding:12px;margin-bottom:10px';
+  div.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-size:13px;font-weight:600">Service ${scheduleRowCount}</span><button onclick="this.closest('.schedule-row').remove()" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:18px">×</button></div>
+    <div class="field-row">
+      <div class="field"><label style="font-size:12px">Service type</label><input class="sr-type" type="text" placeholder="e.g. Oil Change" style="font-size:14px;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;width:100%"></div>
+      <div class="field"><label style="font-size:12px">Every (hrs)</label><input class="sr-interval" type="number" placeholder="250" style="font-size:14px;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;width:100%"></div>
+    </div>
+    <div class="field"><label style="font-size:12px">Alert when this many hours away</label><input class="sr-threshold" type="number" value="20" style="font-size:14px;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;width:100%"></div>
+  `;
+  document.getElementById('maint-schedule-builder').appendChild(div);
+}
+
+// =====================
+// HELPERS / OPTIONS
+// =====================
+async function loadEquipmentOptions() {
+  const { data } = await sb.from('equipment').select('id, unit_number, make, model').eq('is_active', true).order('unit_number');
+  const sel = document.getElementById('wo-equipment');
+  if (sel) { sel.innerHTML = '<option value="">Select equipment…</option>' + (data || []).map(e => `<option value="${e.id}">${e.unit_number} — ${e.make || ''} ${e.model || ''}</option>`).join(''); }
+}
+
+async function loadMechanicsOptions() {
+  const { data } = await sb.from('employees').select('id, name, role').eq('is_active', true).in('role', ['mechanic','foreman','manager','admin']);
+  const sel = document.getElementById('wo-assign');
+  if (sel) { sel.innerHTML = '<option value="">Unassigned</option>' + (data || []).map(e => `<option value="${e.id}">${e.name} (${e.role})</option>`).join(''); }
+}
+
+async function loadMechanicsIntoSelect(selId, currentId) {
+  const { data } = await sb.from('employees').select('id, name, role').eq('is_active', true).in('role', ['mechanic','foreman','manager','admin']);
+  const sel = document.getElementById(selId);
+  if (sel) { sel.innerHTML = '<option value="">— keep current —</option>' + (data || []).map(e => `<option value="${e.id}" ${e.id === currentId ? 'selected' : ''}>${e.name} (${e.role})</option>`).join(''); }
+}
+
+async function loadEquipmentTypes() {
+  const { data } = await sb.from('equipment_types').select('*').order('name');
+  const sel = document.getElementById('eq-type');
+  if (sel) { sel.innerHTML = '<option value="">Select type…</option>' + (data || []).map(t => `<option value="${t.id}">${t.name}</option>`).join(''); }
+}
+
+function getEquipAlertStatus(e, schedules) {
+  if (!schedules) return { cls: 'badge-gray', label: 'OK' };
+  const hrs = parseFloat(e.current_hours || 0);
+  let hasOverdue = false, hasSoon = false;
+  schedules.forEach(s => {
+    const rem = parseFloat(s.next_due_hours || 0) - hrs;
+    if (rem <= 0) hasOverdue = true;
+    else if (rem <= parseFloat(s.alert_threshold_hours || 20)) hasSoon = true;
+  });
+  if (hasOverdue) return { cls: 'badge-red', label: 'Overdue' };
+  if (hasSoon) return { cls: 'badge-amber', label: 'Due soon' };
+  return { cls: 'badge-green', label: 'OK' };
+}
+
+function renderStatusBadge(status) {
+  const map = { new: 'badge-gray', assigned: 'badge-blue', in_progress: 'badge-blue', waiting_parts: 'badge-amber', completed: 'badge-green', closed: 'badge-gray' };
+  return `<span class="badge ${map[status] || 'badge-gray'}">${formatStatus(status)}</span>`;
+}
+
+function renderPriBadge(priority) {
+  const map = { critical: 'badge-red', high: 'badge-amber', normal: 'badge-blue', low: 'badge-gray' };
+  return `<span class="badge ${map[priority] || 'badge-gray'}">${priority?.charAt(0).toUpperCase() + priority?.slice(1)}</span>`;
+}
+
+function formatStatus(s) {
+  const map = { new: 'New', assigned: 'Assigned', in_progress: 'In Progress', waiting_parts: 'Waiting Parts', completed: 'Completed', closed: 'Closed' };
+  return map[s] || s;
+}
+
+function statusDotColor(s) {
+  const map = { new: '', assigned: 'amber', in_progress: 'blue', waiting_parts: 'amber', completed: 'green', closed: 'green' };
+  return map[s] || '';
+}
+
+function formatDate(d) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function formatDateTime(d) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' · ' + new Date(d).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+</script>
+</body>
+</html>
