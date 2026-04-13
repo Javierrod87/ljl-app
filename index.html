@@ -859,35 +859,97 @@ async function loadEmployee() {
   document.getElementById('topbar-user').textContent = data.name;
 }
 
+// Store session from onAuthStateChange so we don't need getSession()
+let _cachedSession = null;
+
+async function withTimeout(promise, ms, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(label + ' TIMEOUT after ' + ms + 'ms')), ms);
+  });
+  try {
+    const result = await Promise.race([promise, timeout]);
+    clearTimeout(timer);
+    return { result, timedOut: false };
+  } catch(e) {
+    clearTimeout(timer);
+    return { result: null, timedOut: true, error: e.message };
+  }
+}
+
 async function testEmployeeQuery() {
   dbg('TEST START', '#ff0');
   dbg('TEST: SUPABASE_URL = ' + SUPABASE_URL, '#888');
+  dbg('TEST: cached session exists = ' + (!!_cachedSession), '#888');
 
-  // Get session
-  const sessionRes = await sb.auth.getSession();
-  const session = sessionRes.data.session;
-  if (!session) { dbg('TEST: NO SESSION — log in first', '#f00'); return; }
-  dbg('TEST: session.access_token exists = ' + (!!session.access_token), '#888');
+  // --- STEP 1: getSession with timeout ---
+  let session = _cachedSession;
+  if (!session) {
+    dbg('TEST: before getSession', '#0ff');
+    try {
+      const { result, timedOut, error } = await withTimeout(
+        sb.auth.getSession(), 5000, 'GETSESSION'
+      );
+      if (timedOut) {
+        dbg('TEST: GETSESSION TIMEOUT — sb.auth.getSession() hung for 5s', '#f00');
+        session = null;
+      } else {
+        dbg('TEST: after getSession', '#0ff');
+        session = result?.data?.session || null;
+        dbg('TEST: session exists = ' + (!!session), session ? '#0f0' : '#f00');
+        if (session) dbg('TEST: access_token exists = ' + (!!session.access_token), '#888');
+      }
+    } catch(e) {
+      dbg('TEST: getSession EXCEPTION: ' + e.message, '#f00');
+    }
+  } else {
+    dbg('TEST: using cached session — skipping getSession', '#0f0');
+    dbg('TEST: access_token exists = ' + (!!session.access_token), '#888');
+  }
 
-  // --- TEST A: Supabase client query ---
+  // --- STEP 2: getUser with timeout ---
+  dbg('TEST: before getUser', '#0ff');
   try {
-    dbg('TEST CLIENT QUERY START', '#0ff');
-    const { data, error } = await sb
-      .from('employees')
-      .select('id,name,email,role,auth_user_id')
-      .limit(1);
-    dbg('TEST CLIENT QUERY RESOLVED', '#0ff');
-    dbg('TEST CLIENT QUERY DATA: ' + JSON.stringify(data), data ? '#0f0' : '#888');
-    dbg('TEST CLIENT QUERY ERROR: ' + JSON.stringify(error), error ? '#f00' : '#888');
+    const { result, timedOut, error } = await withTimeout(
+      sb.auth.getUser(), 5000, 'GETUSER'
+    );
+    if (timedOut) {
+      dbg('TEST: GETUSER TIMEOUT — sb.auth.getUser() hung for 5s', '#f00');
+    } else {
+      dbg('TEST: after getUser', '#0ff');
+      dbg('TEST: user email = ' + (result?.data?.user?.email || 'null'), '#888');
+    }
+  } catch(e) {
+    dbg('TEST: getUser EXCEPTION: ' + e.message, '#f00');
+  }
+
+  // --- STEP 3: Client query with timeout ---
+  dbg('TEST: before client query', '#0ff');
+  try {
+    const { result, timedOut, error } = await withTimeout(
+      sb.from('employees').select('id,name,email,role').limit(1),
+      5000, 'CLIENT QUERY'
+    );
+    if (timedOut) {
+      dbg('TEST CLIENT QUERY TIMEOUT — sb.from().select() hung for 5s', '#f00');
+    } else {
+      dbg('TEST: after client query', '#0ff');
+      dbg('TEST CLIENT QUERY DATA: ' + JSON.stringify(result?.data), result?.data ? '#0f0' : '#888');
+      dbg('TEST CLIENT QUERY ERROR: ' + JSON.stringify(result?.error), result?.error ? '#f00' : '#888');
+    }
   } catch(e) {
     dbg('TEST CLIENT QUERY EXCEPTION: ' + e.message, '#f00');
   }
 
-  // --- TEST B: Raw fetch ---
+  // --- STEP 4: Raw fetch (no Supabase client) ---
+  if (!session) {
+    dbg('TEST: skipping raw fetch — no session available', '#f00');
+    return;
+  }
+  dbg('TEST: before raw fetch', '#0ff');
   try {
-    dbg('TEST RAW FETCH START', '#0ff');
-    const url = SUPABASE_URL + '/rest/v1/employees?select=id,name,email,role,auth_user_id&limit=1';
-    const res = await fetch(url, {
+    const url = SUPABASE_URL + '/rest/v1/employees?select=id,name,email,role&limit=1';
+    const fetchPromise = fetch(url, {
       method: 'GET',
       headers: {
         'apikey': SUPABASE_KEY,
@@ -895,9 +957,15 @@ async function testEmployeeQuery() {
         'Accept': 'application/json'
       }
     });
-    dbg('TEST RAW FETCH RESPONSE STATUS: ' + res.status, res.ok ? '#0f0' : '#f00');
-    const body = await res.text();
-    dbg('TEST RAW FETCH RESPONSE BODY: ' + body.substring(0, 200), '#0f0');
+    const { result: res, timedOut } = await withTimeout(fetchPromise, 5000, 'RAW FETCH');
+    if (timedOut) {
+      dbg('TEST RAW FETCH TIMEOUT', '#f00');
+    } else {
+      dbg('TEST: after raw fetch', '#0ff');
+      dbg('TEST RAW FETCH RESPONSE STATUS: ' + res.status, res.ok ? '#0f0' : '#f00');
+      const body = await res.text();
+      dbg('TEST RAW FETCH RESPONSE BODY: ' + body.substring(0, 300), '#0f0');
+    }
   } catch(e) {
     dbg('TEST RAW FETCH ERROR: ' + e.message, '#f00');
   }
@@ -1549,7 +1617,8 @@ sb.auth.onAuthStateChange(async (event, session) => {
     }
 
     appStarting = true;
-    dbg('   → appStarting set TRUE', '#ff0');
+    _cachedSession = session;
+    dbg('   → appStarting set TRUE — session cached', '#ff0');
     currentUser = session.user;
     dbg('   → proceeding to loadEmployee for: ' + session.user.email, '#0f0');
 
