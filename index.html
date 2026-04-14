@@ -1039,6 +1039,14 @@ async function deleteWorkOrder(woId, woNumber) {
   loadWorkOrders();
 }
 
+async function removeEquipPhoto(equipId) {
+  if (!confirm('Remove this photo?')) return;
+  const { error } = await restUpdate('equipment', { photo_url: null, updated_at: new Date().toISOString() }, 'id=eq.' + equipId);
+  if (error) { showToast('Error removing photo: ' + error.message); return; }
+  showToast('Photo removed');
+  openEquipDetail(equipId);
+}
+
 async function uploadEquipPhoto(equipId, input) {
   const file = input.files[0];
   if (!file) return;
@@ -2011,7 +2019,14 @@ async function openEquipDetail(id) {
         <div class="info-row"><span class="info-label">Status</span><span class="info-value">${e.status || '—'}</span></div>
         <div class="info-row"><span class="info-label">Location</span><span class="info-value">${e.location || '—'}</span></div>
         <div class="info-row"><span class="info-label">Current hours</span><span class="info-value" style="color:var(--blue);font-weight:700">${e.current_hours || 0} hrs</span></div>
-        ${e.photo_url ? `<img src="${e.photo_url}" style="width:100%;max-height:180px;object-fit:cover;border-radius:8px;border:1px solid var(--border);margin-top:10px">` : ''}
+        ${e.photo_url ? `
+          <div style="position:relative;margin-top:10px">
+            <img src="${e.photo_url}" style="width:100%;max-height:180px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">
+            ${currentEmployee && ['admin','manager'].includes(currentEmployee.role) ? `
+            <button onclick="removeEquipPhoto('${e.id}')" style="position:absolute;top:6px;right:6px;background:#b91c1c;color:white;border:none;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer">✕ Remove Photo</button>
+            ` : ''}
+          </div>
+        ` : ''}
         ${currentEmployee && ['admin','manager'].includes(currentEmployee.role) ? `
         <div style="margin-top:10px">
           <input type="file" id="equip-photo-camera-read" accept="image/*" capture="environment" style="display:none" onchange="uploadEquipPhoto('${e.id}', this)">
@@ -2041,7 +2056,12 @@ async function openEquipDetail(id) {
         <div class="info-row"><span class="info-label">Location</span><input id="edit-location" value="${e.location || ''}" placeholder="Enter location" style="border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:13px;text-align:right;width:140px"></div>
         <div style="margin-top:12px">
           <label style="font-size:13px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:6px">Equipment Photo</label>
-          ${e.photo_url ? `<img src="${e.photo_url}" style="width:100%;max-height:180px;object-fit:cover;border-radius:8px;border:1px solid var(--border);margin-bottom:8px">` : ''}
+          ${e.photo_url ? `
+          <div style="position:relative;margin-bottom:8px">
+            <img src="${e.photo_url}" style="width:100%;max-height:180px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">
+            <button onclick="removeEquipPhoto('${e.id}')" style="position:absolute;top:6px;right:6px;background:#b91c1c;color:white;border:none;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer">✕ Remove Photo</button>
+          </div>
+          ` : ''}
           <input type="file" id="equip-photo-camera" accept="image/*" capture="environment" style="display:none" onchange="uploadEquipPhoto('${e.id}', this)">
           <input type="file" id="equip-photo-library" accept="image/*" style="display:none" onchange="uploadEquipPhoto('${e.id}', this)">
           <div style="display:flex;gap:8px">
