@@ -1096,6 +1096,7 @@ async function saveEquipInfo(equipId) {
   const serial = document.getElementById('edit-serial')?.value.trim();
   const make = document.getElementById('edit-make')?.value.trim();
   const model = document.getElementById('edit-model')?.value.trim();
+  const license = document.getElementById('edit-license')?.value.trim();
 
   if (!unit) { showToast('Unit number cannot be empty'); return; }
 
@@ -1107,6 +1108,7 @@ async function saveEquipInfo(equipId) {
   if (serial !== undefined) updates.serial_number = serial || null;
   if (make !== undefined) updates.make = make || null;
   if (model !== undefined) updates.model = model || null;
+  if (license !== undefined) updates.license_plate = license || null;
 
   const { error } = await restUpdate('equipment', updates, 'id=eq.' + equipId);
   if (error) { showToast('Error: ' + error.message); return; }
@@ -2018,6 +2020,7 @@ async function openEquipDetail(id) {
         <div class="info-row"><span class="info-label">Serial #</span><span class="info-value">${e.serial_number || '—'}</span></div>
         <div class="info-row"><span class="info-label">Status</span><span class="info-value">${e.status || '—'}</span></div>
         <div class="info-row"><span class="info-label">Location</span><span class="info-value">${e.location || '—'}</span></div>
+        <div class="info-row"><span class="info-label">License Plate</span><span class="info-value">${e.license_plate || '—'}</span></div>
         <div class="info-row"><span class="info-label">Current hours</span><span class="info-value" style="color:var(--blue);font-weight:700">${e.current_hours || 0} hrs</span></div>
         ${e.photo_url ? `
           <div style="position:relative;margin-top:10px">
@@ -2054,6 +2057,7 @@ async function openEquipDetail(id) {
           </select>
         </div>
         <div class="info-row"><span class="info-label">Location</span><input id="edit-location" value="${e.location || ''}" placeholder="Enter location" style="border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:13px;text-align:right;width:140px"></div>
+        <div class="info-row"><span class="info-label">License Plate</span><input id="edit-license" value="${e.license_plate || ''}" placeholder="License plate" style="border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:13px;text-align:right;width:140px"></div>
         <div style="margin-top:12px">
           <label style="font-size:13px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:6px">Equipment Photo</label>
           ${e.photo_url ? `
