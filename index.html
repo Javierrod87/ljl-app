@@ -1885,7 +1885,19 @@ async function submitWorkOrder() {
   await restInsert('work_order_status_history', { work_order_id: data.id, to_status: insertData.status, changed_by_id: currentEmployee?.id, note: 'Work order created' });
   if (hours) { await restInsert('hour_readings', { equipment_id: equipId, hours: parseFloat(hours), submitted_by_id: currentEmployee?.id }); await restUpdate('equipment', { current_hours: parseFloat(hours) }, 'id=eq.' + equipId); }
   await uploadPhotos(data.id);
-  showToast('Work order created!');
+  // Show confirmation modal
+  const woNumber = data.work_order_number || 'Work Order';
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `<div class="modal" style="text-align:center">
+    <div style="font-size:48px;margin-bottom:12px">✅</div>
+    <h2 style="margin-bottom:8px">Work Order Created</h2>
+    <p style="color:var(--text-secondary);font-size:14px;margin-bottom:20px">${woNumber} has been submitted successfully.</p>
+    <button onclick="this.closest('.modal-overlay').remove(); showScreen('workorders');" class="btn" style="width:100%">View Work Orders</button>
+    <button onclick="this.closest('.modal-overlay').remove();" class="btn btn-secondary" style="width:100%;margin-top:8px">Create Another</button>
+  </div>`;
+  document.body.appendChild(overlay);
+
   // Send email notification
   fetch('https://fahkluyuvgxhmpdkvrcr.supabase.co/functions/v1/rapid-function', {
     method: 'POST',
@@ -1895,7 +1907,6 @@ async function submitWorkOrder() {
     },
     body: JSON.stringify({ work_order_id: data.id })
   }).catch(e => console.log('WO notify error:', e));
-  showScreen('workorders');
 }
 
 function previewPhotos(input) {
