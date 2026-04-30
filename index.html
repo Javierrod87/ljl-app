@@ -1853,10 +1853,19 @@ async function completeWO(id) {
   const notes = document.getElementById('wo-resolution')?.value || '';
   const labor = document.getElementById('wo-labor')?.value || null;
   const parts = document.getElementById('wo-parts-cost')?.value || null;
-  const { error } = await restUpdate('work_orders', { resolution_notes: notes, labor_hours: labor ? parseFloat(labor) : null, parts_cost: parts ? parseFloat(parts) : null, updated_at: new Date().toISOString() }, 'id=eq.' + id);
+  const { error } = await restUpdate('work_orders', {
+    status: 'completed',
+    completed_at: new Date().toISOString(),
+    resolution_notes: notes,
+    labor_hours: labor ? parseFloat(labor) : null,
+    parts_cost: parts ? parseFloat(parts) : null,
+    updated_at: new Date().toISOString()
+  }, 'id=eq.' + id);
   if (error) { showToast('Error completing work order'); return; }
   await restInsert('work_order_status_history', { work_order_id: id, from_status: 'in_progress', to_status: 'completed', changed_by_id: currentEmployee?.id });
   showToast('Work order marked complete!');
+  // Refresh dashboard counts in background
+  loadDashboard();
   openWODetail(id);
 }
 
