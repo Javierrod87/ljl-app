@@ -656,9 +656,20 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
 // Raw fetch works, Supabase JS client does not in this environment
 // =====================
 
-async function restFetch(path, options) {
+async function restFetch(path, options, _isRetry) {
   options = options || {};
-  const token = _cachedSession?.access_token || '';
+
+  // Proactively refresh token if expiring within 60 seconds
+  let token = _cachedSession?.access_token || '';
+  const expiresAt = _cachedSession?.expires_at;
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (!token || (expiresAt && expiresAt - nowSec < 60)) {
+    try {
+      const { data } = await sb.auth.getSession();
+      if (data?.session) { _cachedSession = data.session; token = data.session.access_token; }
+    } catch(e) { /* use existing token */ }
+  }
+
   const headers = Object.assign({
     'apikey': SUPABASE_KEY,
     'Authorization': 'Bearer ' + token,
@@ -666,19 +677,42 @@ async function restFetch(path, options) {
     'Accept': 'application/json',
     'Prefer': options.prefer || ''
   }, options.headers || {});
-  
+
   const url = SUPABASE_URL + '/rest/v1/' + path;
   const res = await fetch(url, {
     method: options.method || 'GET',
     headers: headers,
     body: options.body ? JSON.stringify(options.body) : undefined
   });
-  
+
+  // Handle 401 / JWT expired — refresh session and retry once
+  if ((res.status === 401 || res.status === 403) && !_isRetry) {
+    try {
+      const { data: refreshed } = await sb.auth.refreshSession();
+      if (refreshed?.session) {
+        _cachedSession = refreshed.session;
+        return restFetch(path, options, true); // retry once with fresh token
+      }
+    } catch(e) { /* fall through to error */ }
+  }
+
   if (!res.ok && res.status !== 406) {
     const errText = await res.text();
-    return { data: null, error: { message: errText, status: res.status } };
+    let errJson = null;
+    try { errJson = JSON.parse(errText); } catch(e) {}
+    // If PGRST303 (JWT expired) and not already retried, refresh and retry once
+    if (!_isRetry && errJson?.code === 'PGRST303') {
+      try {
+        const { data: refreshed } = await sb.auth.refreshSession();
+        if (refreshed?.session) {
+          _cachedSession = refreshed.session;
+          return restFetch(path, options, true); // retry once
+        }
+      } catch(e) { /* fall through to error */ }
+    }
+    return { data: null, error: { message: errJson?.message || errText, status: res.status, code: errJson?.code } };
   }
-  
+
   const text = await res.text();
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch(e) { data = text; }
@@ -1594,12 +1628,19 @@ sb.auth.onAuthStateChange(async (event, session) => {
     return;
   }
 
+  if (event === 'TOKEN_REFRESHED' && session) {
+    // Keep cached session current so restFetch always has a valid token
+    _cachedSession = session;
+    return;
+  }
+
   if (event === 'SIGNED_OUT') {
     resetStartupFlags();
     document.getElementById('app').style.display = 'none';
     document.getElementById('auth-screen').style.display = 'flex';
     currentUser = null;
     currentEmployee = null;
+    _cachedSession = null;
   }
 });
 
