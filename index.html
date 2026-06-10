@@ -1670,8 +1670,19 @@ function showScreen(name) {
 // DASHBOARD
 // =====================
 async function loadDashboard() {
-  const { data: wos } = await restFetch('work_orders?select=*,equipment(unit_number,make,model),assigned_to:employees!work_orders_assigned_to_id_fkey(name)&is_archived=eq.false&status=not.in.(completed,closed)');
+  const { data: wos } = await restFetch('work_orders?select=*,equipment(unit_number,make,model),assigned_to:employees!work_orders_assigned_to_id_fkey(name)&is_archived=eq.false&status=not.in.(completed,closed)&order=created_at.desc');
   const { data: schedules } = await restFetch('maintenance_schedules?select=*,equipment(unit_number,current_hours)&is_active=eq.true');
+
+  // Sort by priority (critical first) then by date (newest first)
+  const priorityOrder = { critical: 0, high: 1, normal: 2, low: 3 };
+  if (wos) {
+    wos.sort((a, b) => {
+      const pa = priorityOrder[a.priority] ?? 2;
+      const pb = priorityOrder[b.priority] ?? 2;
+      if (pa !== pb) return pa - pb;
+      return new Date(b.created_at) - new Date(a.created_at);
+    });
+  }
 
   const open = wos?.length || 0;
   const critical = wos?.filter(w => w.priority === 'critical').length || 0;
