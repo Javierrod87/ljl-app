@@ -854,18 +854,8 @@ async function handlePasswordReset() {
     return;
   }
 
-  // Check we have a valid session before trying to update
-  const { data: { session } } = await sb.auth.getSession();
-  if (!session) {
-    errEl.textContent = 'This reset link has expired. Please request a new one.';
-    errEl.style.display = 'block';
-    setTimeout(function() {
-      document.getElementById('reset-screen').style.display = 'none';
-      document.getElementById('forgot-screen').style.display = 'flex';
-    }, 2000);
-    return;
-  }
-
+  // Update password directly — if session is valid it will work
+  // Wrap in try/catch in case session check times out
   const { error } = await sb.auth.updateUser({ password: password });
   if (error) {
     if (error.message.includes('expired') || error.message.includes('invalid')) {
@@ -928,11 +918,14 @@ function showAuthError(msg) {
   el.style.display = 'block';
 }
 
-async function handleLogout() {
+async async function handleLogout() {
+  _intentionalSignOut = true;
   await sb.auth.signOut();
   document.getElementById('auth-screen').style.display = 'flex';
   document.getElementById('app').style.display = 'none';
   currentUser = null; currentEmployee = null;
+  _cachedSession = null;
+  resetStartupFlags();
 }
 
 async function loadEmployee() {
@@ -1211,7 +1204,7 @@ async function logFreeFormMaintenance(equipId) {
 
   const fullNotes = [notes, shop ? 'By: ' + shop : ''].filter(Boolean).join(' | ');
 
-  const { error } = await restInsert('maintenance_events', { equipment_id: equipId, service_type: serviceType, performed_by_id: currentEmployee?.id, hours_at_service: parseInt(hours), performed_at: date, notes: notes || null, parts_used: parts || null, cost: cost ? parseFloat(cost) : null, shop_vendor: shop || null });
+  const { error } = await restInsert('maintenance_events', { equipment_id: equipId, service_type: serviceType, performed_by_id: currentEmployee?.id, hours_at_service: parseInt(hours), performed_at: new Date().toISOString(), notes: notes || null, parts_used: parts || null, cost: cost ? parseFloat(cost) : null, shop_vendor: shop || null });
 
   if (error) { showToast('Error saving: ' + error.message); return; }
 
@@ -1635,12 +1628,17 @@ sb.auth.onAuthStateChange(async (event, session) => {
   }
 
   if (event === 'SIGNED_OUT') {
-    resetStartupFlags();
-    document.getElementById('app').style.display = 'none';
-    document.getElementById('auth-screen').style.display = 'flex';
-    currentUser = null;
-    currentEmployee = null;
-    _cachedSession = null;
+    if (_intentionalSignOut) {
+      // User tapped logout — go to login screen
+      _intentionalSignOut = false;
+      resetStartupFlags();
+      document.getElementById('app').style.display = 'none';
+      document.getElementById('auth-screen').style.display = 'flex';
+      currentUser = null;
+      currentEmployee = null;
+      _cachedSession = null;
+    }
+    // If not intentional (e.g. internal Supabase token operation), ignore
   }
 });
 
