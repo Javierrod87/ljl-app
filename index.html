@@ -918,7 +918,7 @@ function showAuthError(msg) {
   el.style.display = 'block';
 }
 
-async async function handleLogout() {
+async function handleLogout() {
   _intentionalSignOut = true;
   await sb.auth.signOut();
   document.getElementById('auth-screen').style.display = 'flex';
