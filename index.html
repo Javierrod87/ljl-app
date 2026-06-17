@@ -480,14 +480,6 @@
       </div>
       <div class="filter-bar" id="equip-type-filters">
         <span class="filter-chip active" onclick="setEquipTypeFilter('all',this)">All</span>
-        <span class="filter-chip" onclick="setEquipTypeFilter('Backhoe',this)">Backhoes</span>
-        <span class="filter-chip" onclick="setEquipTypeFilter('Compactor',this)">Compactors</span>
-        <span class="filter-chip" onclick="setEquipTypeFilter('Dump Truck',this)">Dump Trucks</span>
-        <span class="filter-chip" onclick="setEquipTypeFilter('Excavator',this)">Excavators</span>
-        <span class="filter-chip" onclick="setEquipTypeFilter('Loader',this)">Loaders</span>
-        <span class="filter-chip" onclick="setEquipTypeFilter('Vacuum Truck',this)">Vacuum Trucks</span>
-        <span class="filter-chip" onclick="setEquipTypeFilter('Water Truck',this)">Water Trucks</span>
-        <span class="filter-chip" onclick="setEquipTypeFilter('Truck',this)">Trucks</span>
       </div>
       <div class="card" id="equip-list"><div class="loading">Loading…</div></div>
     </div>
@@ -511,9 +503,22 @@
       <div class="tab-bar">
         <div class="tab active" onclick="adminTab('employees',this)">Employees</div>
         <div class="tab" id="tab-add-equipment" onclick="adminTab('equipment',this)">Add Equipment</div>
+        <div class="tab" id="tab-categories" onclick="adminTab('categories',this)">Categories</div>
       </div>
 
       <!-- Employees tab -->
+      <div id="admin-categories-panel" style="display:none">
+        <div class="form-section">
+          <h3>Equipment Categories</h3>
+          <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Add or remove categories. These appear as filters on the Fleet page and in the Add Equipment form.</p>
+          <div id="categories-list"><div class="loading">Loading…</div></div>
+          <div style="margin-top:16px;display:flex;gap:8px">
+            <input id="new-category-name" placeholder="New category name…" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:14px">
+            <button onclick="addEquipmentCategory()" style="padding:10px 16px;background:var(--blue);color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">+ Add</button>
+          </div>
+        </div>
+      </div>
+
       <div id="admin-employees">
         <div class="section-header">
           <h2>Employees</h2>
@@ -1270,6 +1275,16 @@ function applyRolePermissions() {
       equipTab.style.display = 'block';
     } else {
       equipTab.style.display = 'none';
+    }
+  }
+
+  // Categories tab — admin and manager only
+  const catTab = document.getElementById('tab-categories');
+  if (catTab) {
+    if (['admin', 'manager'].includes(role)) {
+      catTab.style.display = 'block';
+    } else {
+      catTab.style.display = 'none';
     }
   }
 
@@ -2476,7 +2491,45 @@ function adminTab(tab, el) {
   el.classList.add('active');
   document.getElementById('admin-employees').style.display = tab === 'employees' ? 'block' : 'none';
   document.getElementById('admin-equipment').style.display = tab === 'equipment' ? 'block' : 'none';
+  const catPanel = document.getElementById('admin-categories-panel');
+  if (catPanel) catPanel.style.display = tab === 'categories' ? 'block' : 'none';
   if (tab === 'employees') loadAdminEmployees();
+  if (tab === 'categories') loadAdminCategories();
+}
+
+async function loadAdminCategories() {
+  const el = document.getElementById('categories-list');
+  el.innerHTML = '<div class="loading">Loading…</div>';
+  const { data, error } = await restFetch('equipment_types?select=id,name&order=name');
+  if (error || !data) { el.innerHTML = '<p style="color:var(--red)">Error loading categories</p>'; return; }
+  if (!data.length) { el.innerHTML = '<p style="color:var(--text-secondary);font-size:13px">No categories yet.</p>'; return; }
+  el.innerHTML = data.map(t => `
+    <div class="card-row" style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:15px;font-weight:500">${t.name}</span>
+      <button onclick="deleteEquipmentCategory('${t.id}','${t.name}')" style="background:var(--red-light);color:var(--red);border:1px solid var(--red);border-radius:6px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer">Remove</button>
+    </div>
+  `).join('');
+}
+
+async function addEquipmentCategory() {
+  const input = document.getElementById('new-category-name');
+  const name = input?.value.trim();
+  if (!name) { showToast('Please enter a category name'); return; }
+  const { error } = await restInsert('equipment_types', { name });
+  if (error) { showToast('Error: ' + error.message); return; }
+  input.value = '';
+  showToast(name + ' added!');
+  loadAdminCategories();
+  loadEquipmentTypes(); // refresh filter bar
+}
+
+async function deleteEquipmentCategory(id, name) {
+  if (!confirm('Remove "' + name + '" category? Equipment already using this category will not be affected.')) return;
+  const { error } = await restDelete('equipment_types', 'id=eq.' + id);
+  if (error) { showToast('Error: ' + error.message); return; }
+  showToast(name + ' removed');
+  loadAdminCategories();
+  loadEquipmentTypes();
 }
 
 async function loadAdminEmployees() {
@@ -2645,6 +2698,24 @@ async function loadMechanicsIntoSelect(selId, currentId) {
 }
 
 async function loadEquipmentTypes() {
+  // Dynamically populate fleet filter bar from database
+  const { data: types } = await restFetch('equipment_types?select=id,name&order=name');
+  if (types && types.length) {
+    const bar = document.getElementById('equip-type-filters');
+    if (bar) {
+      // Keep the All chip, replace the rest
+      const allChip = bar.querySelector('.filter-chip');
+      bar.innerHTML = '';
+      bar.appendChild(allChip);
+      types.forEach(t => {
+        const chip = document.createElement('span');
+        chip.className = 'filter-chip';
+        chip.textContent = t.name;
+        chip.onclick = function() { setEquipTypeFilter(t.name, this); };
+        bar.appendChild(chip);
+      });
+    }
+  }
   const { data } = await restFetch('equipment_types?select=*&order=name');
   const sel = document.getElementById('eq-type');
   if (sel) { sel.innerHTML = '<option value="">Select type…</option>' + (data || []).map(t => `<option value="${t.id}">${t.name}</option>`).join(''); }
