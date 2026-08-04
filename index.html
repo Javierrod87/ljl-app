@@ -1921,6 +1921,7 @@ async function completeWO(id) {
   const { error } = await restUpdate('work_orders', {
     status: 'completed',
     completed_at: new Date().toISOString(),
+    is_archived: true,
     resolution_notes: notes,
     labor_hours: labor ? parseFloat(labor) : null,
     parts_cost: parts ? parseFloat(parts) : null,
@@ -1928,7 +1929,7 @@ async function completeWO(id) {
   }, 'id=eq.' + id);
   if (error) { showToast('Error completing work order'); return; }
   await restInsert('work_order_status_history', { work_order_id: id, from_status: 'in_progress', to_status: 'completed', changed_by_id: currentEmployee?.id });
-  showToast('Work order marked complete!');
+  showToast('Work order completed and archived!');
   openWODetail(id);
 }
 
@@ -1940,7 +1941,8 @@ async function closeWO(id) {
 }
 
 async function submitWorkOrder() {
-  const equipId = document.getElementById('wo-equipment').value;
+  const equipRaw = document.getElementById('wo-equipment').value;
+  const equipId = equipRaw === 'other' ? null : equipRaw;
   const desc = document.getElementById('wo-description').value.trim();
   const priority = document.getElementById('wo-priority').value;
   const category = document.getElementById('wo-category').value;
@@ -2682,7 +2684,7 @@ function addScheduleRow() {
 async function loadEquipmentOptions() {
   const { data } = await restFetch('equipment?select=id,unit_number,make,model&is_active=eq.true&order=unit_number');
   const sel = document.getElementById('wo-equipment');
-  if (sel) { sel.innerHTML = '<option value="">Select equipment…</option>' + (data || []).map(e => `<option value="${e.id}">${e.unit_number} — ${e.make || ''} ${e.model || ''}</option>`).join(''); }
+  if (sel) { sel.innerHTML = '<option value="">Select equipment…</option>' + (data || []).map(e => `<option value="${e.id}">${e.unit_number} — ${e.make || ''} ${e.model || ''}</option>`).join('') + '<option value="other">Other</option>'; }
 }
 
 async function loadMechanicsOptions() {
