@@ -634,7 +634,7 @@
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = '2.1.0';
+const APP_VERSION = '2.1.1';
 (function () {
   const key = 'ljl_app_version';
   const stored = localStorage.getItem(key);
@@ -2684,7 +2684,7 @@ function addScheduleRow() {
 async function loadEquipmentOptions() {
   const { data } = await restFetch('equipment?select=id,unit_number,make,model&is_active=eq.true&order=unit_number');
   const sel = document.getElementById('wo-equipment');
-  if (sel) { sel.innerHTML = '<option value="">Select equipment…</option>' + (data || []).map(e => `<option value="${e.id}">${e.unit_number} — ${e.make || ''} ${e.model || ''}</option>`).join('') + '<option value="other">Other</option>'; }
+  if (sel) { sel.innerHTML = '<option value="">Select equipment…</option>' + (data || []).map(e => `<option value="${e.id}">${e.unit_number} — ${e.make || ''} ${e.model || ''}</option>`).join('') + '<option value="other">── Other / Not Listed ──</option>'; }
 }
 
 async function loadMechanicsOptions() {
