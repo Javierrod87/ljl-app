@@ -634,7 +634,7 @@
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = '2.1.1';
+const APP_VERSION = '2.1.2';
 (function () {
   const key = 'ljl_app_version';
   const stored = localStorage.getItem(key);
@@ -1950,7 +1950,7 @@ async function submitWorkOrder() {
   const assignTo = document.getElementById('wo-assign').value;
   const hours = document.getElementById('wo-hours').value;
   const dueDate = document.getElementById('wo-due-date').value;
-  if (!equipId) { showToast('Please select equipment'); return; }
+  if (!equipRaw) { showToast('Please select equipment'); return; }
   if (!desc) { showToast('Please enter a description'); return; }
   const insertData = { equipment_id: equipId, description: desc, priority, category, submitted_by_id: currentEmployee?.id, status: assignTo ? 'assigned' : 'new', location: location || null, equipment_hours: hours ? parseFloat(hours) : null, assigned_to_id: assignTo || null, assigned_at: assignTo ? new Date().toISOString() : null, due_date: dueDate || null };
   const { data: woArr, error } = await restInsert('work_orders', insertData);
